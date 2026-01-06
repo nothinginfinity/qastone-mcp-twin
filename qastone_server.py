@@ -2645,23 +2645,26 @@ async def create_collab_session(
     if not user_id:
         return {"error": "Invalid token"}
 
-    username = user_id.replace("user_", "")
-    manager = get_session_manager()
+    try:
+        username = user_id.replace("user_", "")
+        manager = get_session_manager()
 
-    session = manager.create(
-        host_id=user_id,
-        host_name=username.capitalize(),
-        mode=mode,
-    )
+        session = manager.create(
+            host_id=user_id,
+            host_name=username.capitalize(),
+            mode=mode,
+        )
 
-    return {
-        "success": True,
-        "session_id": session.session_id,
-        "invite_code": session.invite_code,
-        "mode": session.mode,
-        "status": session.status,
-        "server_instance": SERVER_INSTANCE
-    }
+        return {
+            "success": True,
+            "session_id": session.session_id,
+            "invite_code": session.invite_code,
+            "mode": session.mode,
+            "status": session.status,
+            "server_instance": SERVER_INSTANCE
+        }
+    except Exception as e:
+        return {"success": False, "error": f"Session creation failed: {str(e)}"}
 
 
 @app.get("/api/collab/session/{session_id}")
