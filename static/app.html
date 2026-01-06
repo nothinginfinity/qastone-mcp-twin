@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QA.Stone - Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .stone-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .sidebar-link { transition: all 0.2s; }
+        .sidebar-link:hover, .sidebar-link.active { background: rgba(102, 126, 234, 0.2); border-left: 3px solid #667eea; }
+        .notification-badge { animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <!-- Auth Screen -->
+    <div id="auth-screen" class="min-h-screen flex items-center justify-center px-4">
+        <div class="max-w-md w-full">
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center mx-auto mb-4">
+                    <span class="text-white font-bold text-2xl">Q</span>
+                </div>
+                <h1 class="text-3xl font-bold mb-2">Welcome to QA.Stone</h1>
+                <p class="text-gray-400">Create your address or sign in</p>
+            </div>
+
+            <!-- Signup Tab -->
+            <div id="signup-form" class="stone-card rounded-2xl p-8">
+                <div class="flex mb-6 border-b border-gray-700">
+                    <button id="tab-signup" onclick="showTab('signup')" class="flex-1 py-3 text-center font-medium border-b-2 border-purple-500 text-purple-400">
+                        Create Account
+                    </button>
+                    <button id="tab-login" onclick="showTab('login')" class="flex-1 py-3 text-center font-medium text-gray-400 hover:text-white">
+                        Sign In
+                    </button>
+                </div>
+
+                <!-- Signup Fields -->
+                <div id="signup-fields">
+                    <div class="mb-4">
+                        <label class="block text-sm text-gray-400 mb-2">Choose a username</label>
+                        <input type="text" id="signup-username" placeholder="satoshi"
+                            class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-purple-500 focus:outline-none">
+                    </div>
+                    <div class="mb-6 p-4 rounded-xl bg-gray-800/50 border border-gray-700">
+                        <div class="text-sm text-gray-400 mb-2">Your address will be:</div>
+                        <div class="font-mono text-purple-400" id="preview-address">username@<span class="text-gray-500">wallet_hash</span></div>
+                    </div>
+                    <button onclick="signup()" class="w-full py-4 rounded-xl gradient-bg font-semibold hover:opacity-90 transition">
+                        Create My Address
+                    </button>
+                </div>
+
+                <!-- Login Fields -->
+                <div id="login-fields" class="hidden">
+                    <div class="mb-6">
+                        <label class="block text-sm text-gray-400 mb-2">Enter your token</label>
+                        <input type="text" id="login-token" placeholder="demo_alice_2026"
+                            class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-purple-500 focus:outline-none">
+                    </div>
+                    <button onclick="login()" class="w-full py-4 rounded-xl gradient-bg font-semibold hover:opacity-90 transition">
+                        Sign In
+                    </button>
+                    <div class="mt-6">
+                        <div class="text-sm text-gray-400 mb-3 text-center">Quick Demo Access:</div>
+                        <div class="flex flex-wrap gap-2 justify-center">
+                            <button onclick="quickLogin('alice')" class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm">Alice</button>
+                            <button onclick="quickLogin('bob')" class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm">Bob</button>
+                            <button onclick="quickLogin('charlie')" class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm">Charlie</button>
+                            <button onclick="quickLogin('diana')" class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm">Diana</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-6">
+                <a href="/" class="text-gray-500 hover:text-gray-300 text-sm">Back to landing page</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App (hidden until login) -->
+    <div id="main-app" class="hidden">
+        <!-- Top Bar -->
+        <header class="fixed top-0 left-0 right-0 h-16 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 z-40 flex items-center px-4 md:pl-64">
+            <div class="flex items-center space-x-2 md:hidden">
+                <button onclick="toggleSidebar()" class="p-2 rounded-lg hover:bg-gray-800">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="flex-1"></div>
+            <div class="flex items-center space-x-4">
+                <span id="ws-status" class="px-3 py-1 rounded-full text-xs bg-gray-800">Connecting...</span>
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 rounded-full gradient-bg flex items-center justify-center text-sm font-bold" id="user-avatar">?</div>
+                    <span class="font-medium hidden sm:block" id="header-username">User</span>
+                </div>
+                <button onclick="logout()" class="p-2 rounded-lg hover:bg-gray-800 text-gray-400 hover:text-white">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside id="sidebar" class="fixed left-0 top-0 bottom-0 w-64 bg-gray-900 border-r border-gray-800 z-50 transform -translate-x-full md:translate-x-0 transition-transform">
+            <div class="h-16 flex items-center px-6 border-b border-gray-800">
+                <div class="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center mr-2">
+                    <span class="text-white font-bold text-sm">Q</span>
+                </div>
+                <span class="text-xl font-semibold">QA.Stone</span>
+            </div>
+
+            <nav class="p-4 space-y-1">
+                <button onclick="showPage('inbox')" class="sidebar-link w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left" id="nav-inbox">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
+                    </svg>
+                    <span>Inbox</span>
+                    <span id="inbox-badge" class="ml-auto px-2 py-0.5 rounded-full text-xs bg-purple-500 hidden">0</span>
+                </button>
+
+                <button onclick="showPage('wallet')" class="sidebar-link w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left" id="nav-wallet">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                    </svg>
+                    <span>Wallet</span>
+                    <span id="wallet-badge" class="ml-auto text-xs text-gray-500">0 stones</span>
+                </button>
+
+                <button onclick="showPage('compose')" class="sidebar-link w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left" id="nav-compose">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                    </svg>
+                    <span>Send Stone</span>
+                </button>
+
+                <button onclick="showPage('profile')" class="sidebar-link w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left" id="nav-profile">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                    </svg>
+                    <span>Profile</span>
+                </button>
+
+                <div class="border-t border-gray-800 my-4"></div>
+
+                <button onclick="showPage('users')" class="sidebar-link w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left" id="nav-users">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                    </svg>
+                    <span>All Users</span>
+                </button>
+
+                <button onclick="showPage('stats')" class="sidebar-link w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left" id="nav-stats">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                    </svg>
+                    <span>System Stats</span>
+                </button>
+            </nav>
+
+            <!-- Server Status in Sidebar -->
+            <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-800">
+                <div class="flex items-center justify-between text-xs text-gray-500 mb-2">
+                    <span>Twin A</span>
+                    <span id="twin-a-status" class="text-green-400">Online</span>
+                </div>
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                    <span>Twin B</span>
+                    <span id="twin-b-status" class="text-green-400">Online</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="pt-16 md:pl-64 min-h-screen">
+            <div class="p-6">
+                <!-- Toast Notification -->
+                <div id="toast" class="fixed top-20 right-4 z-50 hidden">
+                    <div class="stone-card rounded-xl px-6 py-4 shadow-lg flex items-center space-x-3">
+                        <span id="toast-icon" class="text-2xl">✅</span>
+                        <span id="toast-message">Notification</span>
+                    </div>
+                </div>
+
+                <!-- Inbox Page -->
+                <div id="page-inbox" class="page hidden">
+                    <div class="flex items-center justify-between mb-6">
+                        <h1 class="text-2xl font-bold">Inbox</h1>
+                        <button onclick="loadInbox()" class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm">Refresh</button>
+                    </div>
+                    <div id="inbox-list" class="space-y-4">
+                        <p class="text-gray-500">Loading...</p>
+                    </div>
+                </div>
+
+                <!-- Wallet Page -->
+                <div id="page-wallet" class="page hidden">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h1 class="text-2xl font-bold">Wallet</h1>
+                            <p class="text-gray-400" id="wallet-summary">0 stones - $0.00</p>
+                        </div>
+                        <button onclick="loadWallet()" class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm">Refresh</button>
+                    </div>
+                    <div id="wallet-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <p class="text-gray-500">Loading...</p>
+                    </div>
+                </div>
+
+                <!-- Compose Page -->
+                <div id="page-compose" class="page hidden">
+                    <h1 class="text-2xl font-bold mb-6">Send a Stone</h1>
+                    <div class="max-w-lg">
+                        <div class="stone-card rounded-2xl p-6">
+                            <div class="mb-4">
+                                <label class="block text-sm text-gray-400 mb-2">Select Stone</label>
+                                <select id="compose-stone" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-purple-500 focus:outline-none">
+                                    <option>Loading...</option>
+                                </select>
+                            </div>
+                            <div class="mb-6">
+                                <label class="block text-sm text-gray-400 mb-2">Recipient</label>
+                                <select id="compose-recipient" class="w-full px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-purple-500 focus:outline-none">
+                                    <option>Loading...</option>
+                                </select>
+                            </div>
+                            <button onclick="sendStone()" class="w-full py-4 rounded-xl gradient-bg font-semibold hover:opacity-90 transition">
+                                Send Stone
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profile Page -->
+                <div id="page-profile" class="page hidden">
+                    <h1 class="text-2xl font-bold mb-6">Your Profile</h1>
+                    <div class="max-w-lg">
+                        <div class="stone-card rounded-2xl p-6">
+                            <div class="flex items-center space-x-4 mb-6">
+                                <div class="w-16 h-16 rounded-full gradient-bg flex items-center justify-center text-2xl font-bold" id="profile-avatar">?</div>
+                                <div>
+                                    <div class="text-xl font-bold" id="profile-username">Username</div>
+                                    <div class="text-gray-400 font-mono text-sm" id="profile-address">user@wallet_hash</div>
+                                </div>
+                            </div>
+                            <div class="space-y-4">
+                                <div class="flex justify-between py-3 border-b border-gray-800">
+                                    <span class="text-gray-400">Stones Owned</span>
+                                    <span class="font-medium" id="profile-stones">0</span>
+                                </div>
+                                <div class="flex justify-between py-3 border-b border-gray-800">
+                                    <span class="text-gray-400">Total Value</span>
+                                    <span class="font-medium text-green-400" id="profile-value">$0.00</span>
+                                </div>
+                                <div class="flex justify-between py-3 border-b border-gray-800">
+                                    <span class="text-gray-400">Pending Transfers</span>
+                                    <span class="font-medium" id="profile-pending">0</span>
+                                </div>
+                            </div>
+                            <div class="mt-6 p-4 rounded-xl bg-gray-800/50">
+                                <div class="text-sm text-gray-400 mb-2">Your Token (keep private)</div>
+                                <div class="font-mono text-sm text-purple-400 break-all" id="profile-token">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Users Page -->
+                <div id="page-users" class="page hidden">
+                    <div class="flex items-center justify-between mb-6">
+                        <h1 class="text-2xl font-bold">All Users</h1>
+                        <button onclick="loadUsers()" class="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-sm">Refresh</button>
+                    </div>
+                    <div id="users-grid" class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        <p class="text-gray-500">Loading...</p>
+                    </div>
+                </div>
+
+                <!-- Stats Page -->
+                <div id="page-stats" class="page hidden">
+                    <h1 class="text-2xl font-bold mb-6">System Statistics</h1>
+                    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                        <div class="stone-card rounded-2xl p-6 text-center">
+                            <div class="text-4xl font-bold text-purple-400" id="stats-users">0</div>
+                            <div class="text-gray-400 mt-2">Total Users</div>
+                        </div>
+                        <div class="stone-card rounded-2xl p-6 text-center">
+                            <div class="text-4xl font-bold text-green-400" id="stats-stones">0</div>
+                            <div class="text-gray-400 mt-2">Total Stones</div>
+                        </div>
+                        <div class="stone-card rounded-2xl p-6 text-center">
+                            <div class="text-4xl font-bold text-blue-400" id="stats-value">$0</div>
+                            <div class="text-gray-400 mt-2">Total Value</div>
+                        </div>
+                        <div class="stone-card rounded-2xl p-6 text-center">
+                            <div class="text-4xl font-bold text-yellow-400" id="stats-pending">0</div>
+                            <div class="text-gray-400 mt-2">Pending Transfers</div>
+                        </div>
+                    </div>
+
+                    <div class="stone-card rounded-2xl p-6">
+                        <h2 class="text-lg font-semibold mb-4">Server Info</h2>
+                        <div class="grid sm:grid-cols-2 gap-4">
+                            <div class="p-4 rounded-xl bg-gray-800/50">
+                                <div class="text-sm text-gray-400 mb-1">Current Server</div>
+                                <div class="font-mono text-sm" id="stats-server">Twin A</div>
+                            </div>
+                            <div class="p-4 rounded-xl bg-gray-800/50">
+                                <div class="text-sm text-gray-400 mb-1">Version</div>
+                                <div class="font-mono text-sm" id="stats-version">1.0.0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Mobile Sidebar Overlay -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden" onclick="toggleSidebar()"></div>
+    </div>
+
+    <script>
+        // API Configuration
+        const API_A = 'https://qastone-mcp-twin-production.up.railway.app';
+        const API_B = 'https://qa-stone-b-production.up.railway.app';
+        const WS_A = 'wss://qastone-mcp-twin-production.up.railway.app';
+        let currentAPI = API_A;
+        let currentWS = WS_A;
+
+        // State
+        let currentToken = null;
+        let currentUsername = null;
+        let websocket = null;
+        let currentPage = 'inbox';
+
+        // ========== Auth Functions ==========
+        function showTab(tab) {
+            document.getElementById('tab-signup').className = tab === 'signup'
+                ? 'flex-1 py-3 text-center font-medium border-b-2 border-purple-500 text-purple-400'
+                : 'flex-1 py-3 text-center font-medium text-gray-400 hover:text-white';
+            document.getElementById('tab-login').className = tab === 'login'
+                ? 'flex-1 py-3 text-center font-medium border-b-2 border-purple-500 text-purple-400'
+                : 'flex-1 py-3 text-center font-medium text-gray-400 hover:text-white';
+            document.getElementById('signup-fields').classList.toggle('hidden', tab !== 'signup');
+            document.getElementById('login-fields').classList.toggle('hidden', tab !== 'login');
+        }
+
+        function quickLogin(name) {
+            document.getElementById('login-token').value = `demo_${name}_2026`;
+            login();
+        }
+
+        async function signup() {
+            const username = document.getElementById('signup-username').value.trim().toLowerCase();
+            if (!username) {
+                showToast('Please enter a username', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${currentAPI}/api/users?username=${encodeURIComponent(username)}`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.success) {
+                    currentToken = data.token;
+                    currentUsername = username;
+                    showToast(`Welcome ${username}! Your address is ready.`, 'success');
+                    enterApp();
+                } else {
+                    showToast(data.error || 'Signup failed', 'error');
+                }
+            } catch (e) {
+                showToast('Network error', 'error');
+            }
+        }
+
+        async function login() {
+            const token = document.getElementById('login-token').value.trim();
+            if (!token) {
+                showToast('Please enter your token', 'error');
+                return;
+            }
+
+            currentToken = token;
+            currentUsername = token.replace('demo_', '').replace('_2026', '');
+            enterApp();
+        }
+
+        function logout() {
+            if (websocket) websocket.close();
+            currentToken = null;
+            currentUsername = null;
+            document.getElementById('auth-screen').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('hidden');
+        }
+
+        function enterApp() {
+            document.getElementById('auth-screen').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+
+            // Update UI with username
+            const displayName = currentUsername.charAt(0).toUpperCase() + currentUsername.slice(1);
+            document.getElementById('header-username').textContent = displayName;
+            document.getElementById('user-avatar').textContent = currentUsername.charAt(0).toUpperCase();
+
+            connectWebSocket();
+            showPage('inbox');
+            loadAll();
+        }
+
+        // ========== WebSocket ==========
+        function connectWebSocket() {
+            if (websocket) websocket.close();
+
+            websocket = new WebSocket(`${currentWS}/ws/${currentToken}`);
+
+            websocket.onopen = () => {
+                document.getElementById('ws-status').textContent = 'Live';
+                document.getElementById('ws-status').className = 'px-3 py-1 rounded-full text-xs bg-green-500/20 text-green-400';
+            };
+
+            websocket.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                handleWsMessage(data);
+            };
+
+            websocket.onclose = () => {
+                document.getElementById('ws-status').textContent = 'Offline';
+                document.getElementById('ws-status').className = 'px-3 py-1 rounded-full text-xs bg-gray-700 text-gray-400';
+                if (currentToken) setTimeout(connectWebSocket, 3000);
+            };
+
+            // Ping every 25s
+            setInterval(() => {
+                if (websocket?.readyState === WebSocket.OPEN) {
+                    websocket.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 25000);
+        }
+
+        function handleWsMessage(data) {
+            switch (data.type) {
+                case 'transfer_received':
+                    showToast(`📥 ${data.message}`, 'success');
+                    playSound();
+                    loadInbox();
+                    break;
+                case 'transfer_sent':
+                    showToast(`📤 ${data.message}`, 'success');
+                    loadWallet();
+                    break;
+                case 'connected':
+                    console.log(`Connected to ${data.server_instance}`);
+                    break;
+            }
+        }
+
+        function playSound() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = 800;
+                gain.gain.value = 0.1;
+                osc.start();
+                setTimeout(() => osc.stop(), 150);
+            } catch (e) {}
+        }
+
+        // ========== Navigation ==========
+        function showPage(page) {
+            currentPage = page;
+            document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+            document.getElementById(`page-${page}`).classList.remove('hidden');
+
+            document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+            document.getElementById(`nav-${page}`)?.classList.add('active');
+
+            // Load page data
+            switch (page) {
+                case 'inbox': loadInbox(); break;
+                case 'wallet': loadWallet(); break;
+                case 'compose': loadComposeData(); break;
+                case 'profile': loadProfile(); break;
+                case 'users': loadUsers(); break;
+                case 'stats': loadStats(); break;
+            }
+
+            // Close mobile sidebar
+            if (window.innerWidth < 768) toggleSidebar(false);
+        }
+
+        function toggleSidebar(show) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            const isOpen = !sidebar.classList.contains('-translate-x-full');
+
+            if (show === undefined) show = !isOpen;
+
+            sidebar.classList.toggle('-translate-x-full', !show);
+            overlay.classList.toggle('hidden', !show);
+        }
+
+        // ========== Data Loading ==========
+        async function loadAll() {
+            await Promise.all([loadInbox(), loadWallet(), loadUsers(), loadStats()]);
+        }
+
+        async function loadInbox() {
+            try {
+                const res = await fetch(`${currentAPI}/api/inbox/${currentToken}`);
+                const data = await res.json();
+
+                const badge = document.getElementById('inbox-badge');
+                if (data.pending_count > 0) {
+                    badge.textContent = data.pending_count;
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+
+                const list = document.getElementById('inbox-list');
+                if (data.transfers.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 text-center py-8">No pending transfers</p>';
+                    return;
+                }
+
+                list.innerHTML = data.transfers.map(t => `
+                    <div class="stone-card rounded-xl p-4 flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center text-xl">
+                                ${getIcon(t.sponsor)}
+                            </div>
+                            <div>
+                                <div class="font-medium">${t.sponsor}</div>
+                                <div class="text-sm text-gray-400">From ${t.from.replace('user_', '')}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <span class="text-green-400 font-medium">${t.value}</span>
+                            <button onclick="acceptTransfer('${t.transfer_id}')" class="px-4 py-2 rounded-lg gradient-bg text-sm font-medium hover:opacity-90">
+                                Accept
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load inbox:', e);
+            }
+        }
+
+        async function loadWallet() {
+            try {
+                const res = await fetch(`${currentAPI}/api/users/${currentUsername}/wallet`);
+                const data = await res.json();
+
+                document.getElementById('wallet-summary').textContent = `${data.summary.stone_count} stones - ${data.summary.total_value_usd}`;
+                document.getElementById('wallet-badge').textContent = `${data.summary.stone_count} stones`;
+
+                const grid = document.getElementById('wallet-grid');
+                if (data.items.length === 0) {
+                    grid.innerHTML = '<p class="text-gray-500 text-center py-8 col-span-full">No stones in wallet</p>';
+                    return;
+                }
+
+                grid.innerHTML = data.items.map(s => `
+                    <div class="stone-card rounded-xl p-4">
+                        <div class="text-3xl mb-3">${getIcon(s.type)}</div>
+                        <div class="font-medium">${s.sponsor}</div>
+                        <div class="text-green-400 font-medium">${s.value}</div>
+                        <div class="text-xs text-gray-500 mt-2 font-mono truncate">${s.stone_id}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load wallet:', e);
+            }
+        }
+
+        async function loadComposeData() {
+            try {
+                const [walletRes, usersRes] = await Promise.all([
+                    fetch(`${currentAPI}/api/users/${currentUsername}/wallet`),
+                    fetch(`${currentAPI}/api/users`)
+                ]);
+                const walletData = await walletRes.json();
+                const usersData = await usersRes.json();
+
+                const stoneSelect = document.getElementById('compose-stone');
+                stoneSelect.innerHTML = walletData.items.length
+                    ? walletData.items.map(s => `<option value="${s.stone_id}">${s.sponsor} (${s.value})</option>`).join('')
+                    : '<option disabled>No stones to send</option>';
+
+                const recipientSelect = document.getElementById('compose-recipient');
+                recipientSelect.innerHTML = usersData.users
+                    .filter(u => u.username !== currentUsername)
+                    .map(u => `<option value="${u.username}">${u.username}</option>`)
+                    .join('');
+            } catch (e) {
+                console.error('Failed to load compose data:', e);
+            }
+        }
+
+        async function loadProfile() {
+            try {
+                const [walletRes, inboxRes] = await Promise.all([
+                    fetch(`${currentAPI}/api/users/${currentUsername}/wallet`),
+                    fetch(`${currentAPI}/api/inbox/${currentToken}`)
+                ]);
+                const walletData = await walletRes.json();
+                const inboxData = await inboxRes.json();
+
+                const displayName = currentUsername.charAt(0).toUpperCase() + currentUsername.slice(1);
+                document.getElementById('profile-avatar').textContent = currentUsername.charAt(0).toUpperCase();
+                document.getElementById('profile-username').textContent = displayName;
+                document.getElementById('profile-address').textContent = `${currentUsername}@${walletData.user_id?.slice(5, 21) || 'wallet_hash'}`;
+                document.getElementById('profile-stones').textContent = walletData.summary.stone_count;
+                document.getElementById('profile-value').textContent = walletData.summary.total_value_usd;
+                document.getElementById('profile-pending').textContent = inboxData.pending_count;
+                document.getElementById('profile-token').textContent = currentToken;
+            } catch (e) {
+                console.error('Failed to load profile:', e);
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const res = await fetch(`${currentAPI}/api/users`);
+                const data = await res.json();
+
+                const grid = document.getElementById('users-grid');
+                grid.innerHTML = data.users.map(u => `
+                    <div class="stone-card rounded-xl p-4 text-center">
+                        <div class="w-12 h-12 rounded-full gradient-bg flex items-center justify-center mx-auto mb-3 text-lg font-bold">
+                            ${u.username.charAt(0).toUpperCase()}
+                        </div>
+                        <div class="font-medium">${u.username}</div>
+                        <div class="text-sm text-gray-400">${u.stone_count} stones</div>
+                        <div class="text-sm text-green-400">${u.total_value_usd}</div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load users:', e);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch(`${currentAPI}/api/stats`);
+                const data = await res.json();
+
+                document.getElementById('stats-users').textContent = data.stats.users || 0;
+                document.getElementById('stats-stones').textContent = data.stats.stones || 0;
+                document.getElementById('stats-value').textContent = data.stats.total_value_usd || '$0';
+                document.getElementById('stats-pending').textContent = data.stats.pending_transfers || 0;
+                document.getElementById('stats-server').textContent = `Twin ${data.stats.server_instance?.toUpperCase() || 'A'}`;
+                document.getElementById('stats-version').textContent = data.stats.server_version || '1.0.0';
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        // ========== Actions ==========
+        async function sendStone() {
+            const stoneId = document.getElementById('compose-stone').value;
+            const recipient = document.getElementById('compose-recipient').value;
+
+            if (!stoneId || !recipient) {
+                showToast('Please select a stone and recipient', 'error');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${currentAPI}/api/transfer/notify?from_token=${currentToken}&to_username=${recipient}&stone_id=${stoneId}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast(`Stone sent to ${recipient}!`, 'success');
+                    loadWallet();
+                    loadComposeData();
+                } else {
+                    showToast(data.error || 'Failed to send', 'error');
+                }
+            } catch (e) {
+                showToast('Network error', 'error');
+            }
+        }
+
+        async function acceptTransfer(transferId) {
+            try {
+                const res = await fetch(`${currentAPI}/api/accept?token=${currentToken}&transfer_id=${transferId}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showToast('Transfer accepted!', 'success');
+                    loadInbox();
+                    loadWallet();
+                } else {
+                    showToast(data.error || 'Failed to accept', 'error');
+                }
+            } catch (e) {
+                showToast('Network error', 'error');
+            }
+        }
+
+        // ========== Utilities ==========
+        function getIcon(type) {
+            const icons = {
+                'gift_card': '🎁',
+                'api_token': '🔑',
+                'coupon': '🏷️',
+                'event_ticket': '🎟️',
+                'Starbucks': '☕',
+                'Amazon': '📦',
+                'OpenAI': '🤖',
+                'Uber': '🚗'
+            };
+            return icons[type] || '💎';
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const msg = document.getElementById('toast-message');
+
+            icon.textContent = type === 'success' ? '✅' : '❌';
+            msg.textContent = message;
+            toast.classList.remove('hidden');
+
+            setTimeout(() => toast.classList.add('hidden'), 3000);
+        }
+
+        // ========== Preview Address on Signup ==========
+        document.getElementById('signup-username')?.addEventListener('input', (e) => {
+            const username = e.target.value.toLowerCase().trim() || 'username';
+            document.getElementById('preview-address').innerHTML = `${username}@<span class="text-gray-500">wallet_hash</span>`;
+        });
+
+        // ========== Server Health Check ==========
+        async function checkServers() {
+            try {
+                const resA = await fetch(`${API_A}/health`);
+                document.getElementById('twin-a-status').textContent = resA.ok ? 'Online' : 'Offline';
+                document.getElementById('twin-a-status').className = resA.ok ? 'text-green-400' : 'text-red-400';
+            } catch {
+                document.getElementById('twin-a-status').textContent = 'Offline';
+                document.getElementById('twin-a-status').className = 'text-red-400';
+            }
+
+            try {
+                const resB = await fetch(`${API_B}/health`);
+                document.getElementById('twin-b-status').textContent = resB.ok ? 'Online' : 'Offline';
+                document.getElementById('twin-b-status').className = resB.ok ? 'text-green-400' : 'text-red-400';
+            } catch {
+                document.getElementById('twin-b-status').textContent = 'Offline';
+                document.getElementById('twin-b-status').className = 'text-red-400';
+            }
+        }
+
+        // Initial setup
+        checkServers();
+        setInterval(checkServers, 30000);
+    </script>
+</body>
+</html>

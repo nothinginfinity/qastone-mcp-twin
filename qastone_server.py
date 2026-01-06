@@ -409,7 +409,7 @@ ws_manager = ConnectionManager()
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the web UI"""
+    """Serve the web UI landing page"""
     index_file = STATIC_DIR / "index.html"
     if index_file.exists():
         return HTMLResponse(content=index_file.read_text(), status_code=200)
@@ -421,6 +421,15 @@ async def root():
         "status": "running",
         "ui": "Visit /api/users to see users or deploy with static/index.html for web UI"
     })
+
+
+@app.get("/app.html", response_class=HTMLResponse)
+async def app_page():
+    """Serve the main app SPA"""
+    app_file = STATIC_DIR / "app.html"
+    if app_file.exists():
+        return HTMLResponse(content=app_file.read_text(), status_code=200)
+    return HTMLResponse(content="<h1>App not found</h1>", status_code=404)
 
 
 @app.get("/health")

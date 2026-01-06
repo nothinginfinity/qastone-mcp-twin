@@ -3,542 +3,326 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QA.Stone Demo</title>
+    <title>QA.Stone - Email for the AI Era</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            min-height: 100vh;
-            color: #fff;
-            padding: 20px;
-        }
-        .container { max-width: 800px; margin: 0 auto; }
-        h1 { text-align: center; margin-bottom: 10px; font-size: 2.5em; }
-        .subtitle { text-align: center; color: #888; margin-bottom: 30px; }
-
-        .card {
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-        .card h2 { margin-bottom: 15px; color: #4ade80; font-size: 1.2em; }
-
-        .login-section { text-align: center; }
-        .token-input {
-            padding: 12px 20px;
-            font-size: 16px;
-            border: 2px solid #4ade80;
-            border-radius: 8px;
-            background: rgba(0,0,0,0.3);
-            color: #fff;
-            width: 300px;
-            margin-right: 10px;
-        }
-        .btn {
-            padding: 12px 24px;
-            font-size: 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .btn-primary { background: #4ade80; color: #000; }
-        .btn-primary:hover { background: #22c55e; }
-        .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; margin: 5px; }
-        .btn-secondary:hover { background: rgba(255,255,255,0.2); }
-
-        .demo-tokens {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        .wallet-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
-        }
-        .stone-card {
-            background: rgba(0,0,0,0.3);
-            border-radius: 8px;
-            padding: 15px;
-            border-left: 4px solid #4ade80;
-        }
-        .stone-card.gift_card { border-left-color: #ffd700; }
-        .stone-card.api_token { border-left-color: #3b82f6; }
-        .stone-card.coupon { border-left-color: #10b981; }
-        .stone-icon { font-size: 2em; margin-bottom: 10px; }
-        .stone-sponsor { font-weight: bold; }
-        .stone-value { color: #4ade80; font-size: 1.2em; }
-        .stone-id { font-size: 0.7em; color: #666; word-break: break-all; }
-
-        .transfer-form {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-        .transfer-form select, .transfer-form input {
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid rgba(255,255,255,0.2);
-            background: rgba(0,0,0,0.3);
-            color: #fff;
-            font-size: 14px;
-        }
-
-        .inbox-item {
-            background: rgba(74, 222, 128, 0.1);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            text-align: center;
-        }
-        .stat-item { padding: 15px; }
-        .stat-value { font-size: 2em; color: #4ade80; }
-        .stat-label { color: #888; font-size: 0.9em; }
-
-        .status { padding: 5px 10px; border-radius: 20px; font-size: 0.8em; }
-        .status.online { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
-        .status.offline { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
-
-        .server-status {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
-            margin-bottom: 20px;
-        }
-        .server-badge {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .hidden { display: none; }
-        .message {
-            padding: 10px 15px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-        }
-        .message.success { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
-        .message.error { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
-
-        .users-list {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 10px;
-        }
-        .user-card {
-            background: rgba(0,0,0,0.3);
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-        }
-        .user-avatar { font-size: 2em; margin-bottom: 5px; }
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .gradient-text { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .stone-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .glow { box-shadow: 0 0 40px rgba(102, 126, 234, 0.3); }
     </style>
 </head>
-<body>
-    <div class="container">
-        <h1>💎 QA.Stone Demo</h1>
-        <p class="subtitle">MCP Twin Server with Hot-Swap Capability</p>
-
-        <!-- Server Status -->
-        <div class="server-status">
-            <div class="server-badge">
-                <span class="status" id="status-a">●</span>
-                <span>Twin A</span>
-            </div>
-            <div class="server-badge">
-                <span class="status" id="status-b">●</span>
-                <span>Twin B</span>
-            </div>
-        </div>
-
-        <!-- Login Section -->
-        <div class="card login-section" id="login-section">
-            <h2>🔐 Enter Your Demo Token</h2>
-            <div>
-                <input type="text" class="token-input" id="token-input" placeholder="demo_alice_2026">
-                <button class="btn btn-primary" onclick="login()">Login</button>
-            </div>
-            <div class="demo-tokens">
-                <span style="color:#888">Quick login:</span>
-                <button class="btn btn-secondary" onclick="quickLogin('alice')">Alice</button>
-                <button class="btn btn-secondary" onclick="quickLogin('bob')">Bob</button>
-                <button class="btn btn-secondary" onclick="quickLogin('charlie')">Charlie</button>
-                <button class="btn btn-secondary" onclick="quickLogin('diana')">Diana</button>
-                <button class="btn btn-secondary" onclick="quickLogin('eve')">Eve</button>
-            </div>
-        </div>
-
-        <!-- Main App (hidden until login) -->
-        <div id="main-app" class="hidden">
-            <div id="message-area"></div>
-
-            <!-- User Info -->
-            <div class="card">
-                <h2>👤 Welcome, <span id="username">User</span>!</h2>
-                <button class="btn btn-secondary" onclick="logout()" style="float:right;margin-top:-35px;">Logout</button>
-            </div>
-
-            <!-- Wallet -->
-            <div class="card">
-                <h2>💰 Your Wallet (<span id="wallet-count">0</span> stones, <span id="wallet-value">$0</span>)</h2>
-                <div class="wallet-grid" id="wallet-grid"></div>
-            </div>
-
-            <!-- Send Stone -->
-            <div class="card">
-                <h2>📤 Send a Stone</h2>
-                <div class="transfer-form">
-                    <select id="stone-select"></select>
-                    <span>→</span>
-                    <select id="recipient-select"></select>
-                    <button class="btn btn-primary" onclick="sendStone()">Send</button>
+<body class="bg-gray-900 text-white min-h-screen">
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 bg-gray-900/80 backdrop-blur-md border-b border-gray-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">Q</span>
+                    </div>
+                    <span class="text-xl font-semibold">QA.Stone</span>
                 </div>
-            </div>
-
-            <!-- Inbox -->
-            <div class="card">
-                <h2>📥 Inbox (<span id="inbox-count">0</span> pending)</h2>
-                <div id="inbox-list"></div>
-            </div>
-
-            <!-- All Users -->
-            <div class="card">
-                <h2>👥 All Users</h2>
-                <div class="users-list" id="users-list"></div>
-            </div>
-
-            <!-- System Stats -->
-            <div class="card">
-                <h2>📊 System Stats</h2>
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <div class="stat-value" id="stat-users">0</div>
-                        <div class="stat-label">Users</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="stat-stones">0</div>
-                        <div class="stat-label">Stones</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="stat-value">$0</div>
-                        <div class="stat-label">Total Value</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-value" id="stat-pending">0</div>
-                        <div class="stat-label">Pending</div>
-                    </div>
+                <div class="hidden md:flex items-center space-x-6">
+                    <a href="#features" class="text-gray-300 hover:text-white transition">Features</a>
+                    <a href="#how-it-works" class="text-gray-300 hover:text-white transition">How It Works</a>
+                    <a href="#demo" class="text-gray-300 hover:text-white transition">Demo</a>
+                    <a href="/app.html" class="gradient-bg hover:opacity-90 px-4 py-2 rounded-lg font-medium transition">
+                        Launch App
+                    </a>
                 </div>
             </div>
         </div>
-    </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="pt-32 pb-20 px-4">
+        <div class="max-w-7xl mx-auto text-center">
+            <div class="inline-block px-4 py-2 rounded-full bg-purple-500/20 text-purple-300 text-sm font-medium mb-6">
+                Protocol v1.0 - Live on Railway
+            </div>
+            <h1 class="text-5xl sm:text-7xl font-bold mb-6 leading-tight">
+                Email for the<br>
+                <span class="gradient-text">AI Era</span>
+            </h1>
+            <p class="text-xl text-gray-400 max-w-2xl mx-auto mb-10">
+                Universal addressing, progressive loading, and cryptographic verification
+                for AI-to-AI and human-to-AI communication.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="/app.html" class="gradient-bg hover:opacity-90 px-8 py-4 rounded-xl font-semibold text-lg transition transform hover:scale-105 glow">
+                    Create Your Address
+                </a>
+                <a href="#demo" class="bg-gray-800 hover:bg-gray-700 px-8 py-4 rounded-xl font-semibold text-lg transition border border-gray-700">
+                    See Live Demo
+                </a>
+            </div>
+
+            <!-- Address Preview -->
+            <div class="mt-16 max-w-md mx-auto stone-card rounded-2xl p-6">
+                <div class="text-sm text-gray-400 mb-2">Your future address:</div>
+                <div class="text-2xl font-mono text-purple-400">
+                    you@<span class="text-gray-500">a1b2c3d4e5f6g7h8</span>
+                </div>
+                <div class="text-sm text-gray-500 mt-2">Cryptographically verified, universally addressable</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-20 px-4 bg-gray-800/50">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">Why QA.Stone?</h2>
+            <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
+                The protocol that makes AI context exchange as easy as sending an email.
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <!-- Feature 1: LOD -->
+                <div class="bg-gray-800 rounded-2xl p-8 border border-gray-700 hover:border-purple-500 transition group">
+                    <div class="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition">
+                        <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Progressive Loading (LOD)</h3>
+                    <p class="text-gray-400 mb-4">
+                        LOD 5 (50 tokens) to LOD 2 (full content). AI loads only what it needs.
+                    </p>
+                    <div class="flex items-center text-sm font-mono">
+                        <span class="text-green-400">80-95% token savings</span>
+                    </div>
+                </div>
+
+                <!-- Feature 2: Verification -->
+                <div class="bg-gray-800 rounded-2xl p-8 border border-gray-700 hover:border-green-500 transition group">
+                    <div class="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition">
+                        <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Cryptographic Verification</h3>
+                    <p class="text-gray-400 mb-4">
+                        Border hash + Ed25519 signatures. Every stone is verifiable and tamper-proof.
+                    </p>
+                    <div class="flex items-center text-sm font-mono">
+                        <span class="text-green-400">Zero-trust provenance</span>
+                    </div>
+                </div>
+
+                <!-- Feature 3: Wormholes -->
+                <div class="bg-gray-800 rounded-2xl p-8 border border-gray-700 hover:border-blue-500 transition group">
+                    <div class="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-6 group-hover:scale-110 transition">
+                        <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Semantic Wormholes</h3>
+                    <p class="text-gray-400 mb-4">
+                        Link related context across stones. AI traverses connections automatically.
+                    </p>
+                    <div class="flex items-center text-sm font-mono">
+                        <span class="text-blue-400">Infinite context depth</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works -->
+    <section id="how-it-works" class="py-20 px-4">
+        <div class="max-w-7xl mx-auto">
+            <h2 class="text-3xl sm:text-4xl font-bold text-center mb-4">How It Works</h2>
+            <p class="text-gray-400 text-center max-w-2xl mx-auto mb-16">
+                Three simple steps to start using QA.Stone
+            </p>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="text-center">
+                    <div class="w-16 h-16 rounded-full gradient-bg flex items-center justify-center mx-auto mb-6 text-2xl font-bold">1</div>
+                    <h3 class="text-xl font-semibold mb-3">Create Your Address</h3>
+                    <p class="text-gray-400">Sign up with a username. We generate your Ed25519 wallet automatically.</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 rounded-full gradient-bg flex items-center justify-center mx-auto mb-6 text-2xl font-bold">2</div>
+                    <h3 class="text-xl font-semibold mb-3">Send & Receive Stones</h3>
+                    <p class="text-gray-400">Compose stones with progressive layers. Send to any QA.Stone address.</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 rounded-full gradient-bg flex items-center justify-center mx-auto mb-6 text-2xl font-bold">3</div>
+                    <h3 class="text-xl font-semibold mb-3">AI Loads Smart</h3>
+                    <p class="text-gray-400">AI agents load LOD 5 first, then expand as needed. Token-efficient by design.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Live Demo Section -->
+    <section id="demo" class="py-20 px-4 bg-gray-800/50">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-4">Live Server Status</h2>
+            <p class="text-gray-400 text-center mb-12">Our federated twin servers running on Railway</p>
+
+            <div class="grid md:grid-cols-2 gap-8 mb-12">
+                <!-- Twin A -->
+                <div class="stone-card rounded-2xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold">Twin A (Primary)</h3>
+                        <span id="status-a" class="px-3 py-1 rounded-full text-sm bg-gray-700">Checking...</span>
+                    </div>
+                    <div class="text-sm text-gray-400 font-mono">qastone-mcp-twin-production.up.railway.app</div>
+                    <div class="mt-4 grid grid-cols-2 gap-4 text-center">
+                        <div>
+                            <div class="text-2xl font-bold text-purple-400" id="users-a">-</div>
+                            <div class="text-xs text-gray-500">Users</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-green-400" id="stones-a">-</div>
+                            <div class="text-xs text-gray-500">Stones</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Twin B -->
+                <div class="stone-card rounded-2xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold">Twin B (Hot Swap)</h3>
+                        <span id="status-b" class="px-3 py-1 rounded-full text-sm bg-gray-700">Checking...</span>
+                    </div>
+                    <div class="text-sm text-gray-400 font-mono">qa-stone-b-production.up.railway.app</div>
+                    <div class="mt-4 grid grid-cols-2 gap-4 text-center">
+                        <div>
+                            <div class="text-2xl font-bold text-purple-400" id="users-b">-</div>
+                            <div class="text-xs text-gray-500">Users</div>
+                        </div>
+                        <div>
+                            <div class="text-2xl font-bold text-green-400" id="stones-b">-</div>
+                            <div class="text-xs text-gray-500">Stones</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center">
+                <a href="/app.html" class="inline-block gradient-bg hover:opacity-90 px-8 py-4 rounded-xl font-semibold text-lg transition glow">
+                    Try the Demo App
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comparison Table -->
+    <section class="py-20 px-4">
+        <div class="max-w-4xl mx-auto">
+            <h2 class="text-3xl font-bold text-center mb-12">Email vs QA.Stone</h2>
+
+            <div class="bg-gray-800 rounded-2xl overflow-hidden border border-gray-700">
+                <table class="w-full">
+                    <thead class="bg-gray-700/50">
+                        <tr>
+                            <th class="py-4 px-6 text-left">Feature</th>
+                            <th class="py-4 px-6 text-center text-gray-400">Email (1971)</th>
+                            <th class="py-4 px-6 text-center text-purple-400">QA.Stone (2026)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <tr>
+                            <td class="py-4 px-6">Addressing</td>
+                            <td class="py-4 px-6 text-center text-gray-400">user@domain.com</td>
+                            <td class="py-4 px-6 text-center font-mono text-purple-400">author@wallet_hash</td>
+                        </tr>
+                        <tr>
+                            <td class="py-4 px-6">Content</td>
+                            <td class="py-4 px-6 text-center text-gray-400">Plain text</td>
+                            <td class="py-4 px-6 text-center text-purple-400">Progressive LOD layers</td>
+                        </tr>
+                        <tr>
+                            <td class="py-4 px-6">Verification</td>
+                            <td class="py-4 px-6 text-center text-gray-400">None built-in</td>
+                            <td class="py-4 px-6 text-center text-purple-400">Border hash + Ed25519</td>
+                        </tr>
+                        <tr>
+                            <td class="py-4 px-6">AI Optimized</td>
+                            <td class="py-4 px-6 text-center text-gray-400">No</td>
+                            <td class="py-4 px-6 text-center text-green-400">80-95% token savings</td>
+                        </tr>
+                        <tr>
+                            <td class="py-4 px-6">Linking</td>
+                            <td class="py-4 px-6 text-center text-gray-400">Reply threading</td>
+                            <td class="py-4 px-6 text-center text-purple-400">Wormhole traversal</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-20 px-4">
+        <div class="max-w-4xl mx-auto text-center">
+            <div class="gradient-bg rounded-3xl p-12 glow">
+                <h2 class="text-3xl sm:text-4xl font-bold mb-4">Ready to join the AI era?</h2>
+                <p class="text-white/80 mb-8 max-w-xl mx-auto">
+                    Create your QA.Stone address today and start sending verified, progressive context.
+                </p>
+                <a href="/app.html" class="inline-block bg-white text-purple-600 hover:bg-gray-100 px-8 py-4 rounded-xl font-semibold text-lg transition transform hover:scale-105">
+                    Get Started Free
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 px-4 border-t border-gray-800">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center">
+            <div class="flex items-center space-x-2 mb-4 md:mb-0">
+                <div class="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center">
+                    <span class="text-white font-bold text-sm">Q</span>
+                </div>
+                <span class="text-xl font-semibold">QA.Stone</span>
+            </div>
+            <div class="text-gray-500 text-sm">
+                Protocol v1.0 | January 2026 | Built with Railway + Redis
+            </div>
+        </div>
+    </footer>
 
     <script>
         const API_A = 'https://qastone-mcp-twin-production.up.railway.app';
         const API_B = 'https://qa-stone-b-production.up.railway.app';
-        const WS_A = 'wss://qastone-mcp-twin-production.up.railway.app';
-        const WS_B = 'wss://qa-stone-b-production.up.railway.app';
-        let currentAPI = API_A;
-        let currentWS = WS_A;
-        let currentToken = null;
-        let currentUsername = null;
-        let websocket = null;
 
-        // Check server status
-        async function checkServers() {
+        async function checkServer(url, prefix) {
             try {
-                const resA = await fetch(`${API_A}/health`);
-                const dataA = await resA.json();
-                document.getElementById('status-a').className = 'status ' + (dataA.status === 'healthy' ? 'online' : 'offline');
-                document.getElementById('status-a').textContent = dataA.status === 'healthy' ? '● Online' : '● Offline';
-            } catch {
-                document.getElementById('status-a').className = 'status offline';
-                document.getElementById('status-a').textContent = '● Offline';
-            }
+                const res = await fetch(`${url}/health`);
+                const data = await res.json();
+                document.getElementById(`status-${prefix}`).textContent = data.status === 'healthy' ? 'Online' : 'Degraded';
+                document.getElementById(`status-${prefix}`).className =
+                    `px-3 py-1 rounded-full text-sm ${data.status === 'healthy' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`;
 
-            try {
-                const resB = await fetch(`${API_B}/health`);
-                const dataB = await resB.json();
-                document.getElementById('status-b').className = 'status ' + (dataB.status === 'healthy' ? 'online' : 'offline');
-                document.getElementById('status-b').textContent = dataB.status === 'healthy' ? '● Online' : '● Offline';
-            } catch {
-                document.getElementById('status-b').className = 'status offline';
-                document.getElementById('status-b').textContent = '● Offline';
+                // Get stats
+                const statsRes = await fetch(`${url}/api/stats`);
+                const stats = await statsRes.json();
+                document.getElementById(`users-${prefix}`).textContent = stats.stats?.users || 0;
+                document.getElementById(`stones-${prefix}`).textContent = stats.stats?.stones || 0;
+            } catch (e) {
+                document.getElementById(`status-${prefix}`).textContent = 'Offline';
+                document.getElementById(`status-${prefix}`).className = 'px-3 py-1 rounded-full text-sm bg-red-500/20 text-red-400';
             }
         }
 
-        function showMessage(text, type = 'success') {
-            const area = document.getElementById('message-area');
-            area.innerHTML = `<div class="message ${type}">${text}</div>`;
-            setTimeout(() => area.innerHTML = '', 3000);
-        }
+        // Check servers on load
+        checkServer(API_A, 'a');
+        checkServer(API_B, 'b');
 
-        function quickLogin(name) {
-            document.getElementById('token-input').value = `demo_${name}_2026`;
-            login();
-        }
-
-        async function login() {
-            const token = document.getElementById('token-input').value.trim();
-            if (!token) return;
-
-            currentToken = token;
-            currentUsername = token.replace('demo_', '').replace('_2026', '');
-
-            document.getElementById('login-section').classList.add('hidden');
-            document.getElementById('main-app').classList.remove('hidden');
-            document.getElementById('username').textContent = currentUsername.charAt(0).toUpperCase() + currentUsername.slice(1);
-
-            // Connect WebSocket for real-time notifications
-            connectWebSocket();
-
-            await refreshAll();
-        }
-
-        function logout() {
-            // Disconnect WebSocket
-            if (websocket) {
-                websocket.close();
-                websocket = null;
-            }
-            currentToken = null;
-            currentUsername = null;
-            document.getElementById('login-section').classList.remove('hidden');
-            document.getElementById('main-app').classList.add('hidden');
-        }
-
-        function connectWebSocket() {
-            if (websocket) websocket.close();
-
-            const wsUrl = `${currentWS}/ws/${currentToken}`;
-            websocket = new WebSocket(wsUrl);
-
-            websocket.onopen = () => {
-                console.log('WebSocket connected');
-                showMessage('Real-time notifications enabled', 'success');
-            };
-
-            websocket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                handleWebSocketMessage(data);
-            };
-
-            websocket.onclose = () => {
-                console.log('WebSocket disconnected');
-                // Reconnect after 3 seconds if still logged in
-                if (currentToken) {
-                    setTimeout(connectWebSocket, 3000);
-                }
-            };
-
-            websocket.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
-
-            // Send ping every 25 seconds to keep alive
-            setInterval(() => {
-                if (websocket && websocket.readyState === WebSocket.OPEN) {
-                    websocket.send(JSON.stringify({ type: 'ping' }));
-                }
-            }, 25000);
-        }
-
-        function handleWebSocketMessage(data) {
-            console.log('WS message:', data);
-
-            switch (data.type) {
-                case 'connected':
-                    console.log(`Connected to ${data.server_instance}`);
-                    break;
-
-                case 'transfer_received':
-                    showMessage(`📥 ${data.message}`, 'success');
-                    // Auto-refresh inbox
-                    loadInbox();
-                    // Play notification sound (optional)
-                    playNotificationSound();
-                    break;
-
-                case 'transfer_sent':
-                    showMessage(`📤 ${data.message}`, 'success');
-                    // Auto-refresh wallet
-                    loadWallet();
-                    break;
-
-                case 'server_event':
-                    showMessage(`🔔 ${data.message}`, 'success');
-                    break;
-
-                case 'hot_swap':
-                    showMessage(`🔄 Server swap: ${data.message}`, 'success');
-                    break;
-
-                case 'heartbeat':
-                    // Silent heartbeat
-                    break;
-            }
-        }
-
-        function playNotificationSound() {
-            // Simple beep using Web Audio API
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const oscillator = ctx.createOscillator();
-                const gain = ctx.createGain();
-                oscillator.connect(gain);
-                gain.connect(ctx.destination);
-                oscillator.frequency.value = 800;
-                gain.gain.value = 0.1;
-                oscillator.start();
-                setTimeout(() => oscillator.stop(), 150);
-            } catch (e) {}
-        }
-
-        async function refreshAll() {
-            await Promise.all([
-                loadWallet(),
-                loadInbox(),
-                loadUsers(),
-                loadStats()
-            ]);
-        }
-
-        async function loadWallet() {
-            const res = await fetch(`${currentAPI}/api/users/${currentUsername}/wallet`);
-            const data = await res.json();
-
-            document.getElementById('wallet-count').textContent = data.summary.stone_count;
-            document.getElementById('wallet-value').textContent = data.summary.total_value_usd;
-
-            const grid = document.getElementById('wallet-grid');
-            const select = document.getElementById('stone-select');
-
-            grid.innerHTML = data.items.map(stone => `
-                <div class="stone-card ${stone.type}">
-                    <div class="stone-icon">${getIcon(stone.type)}</div>
-                    <div class="stone-sponsor">${stone.sponsor}</div>
-                    <div class="stone-value">${stone.value}</div>
-                    <div class="stone-id">${stone.stone_id}</div>
-                </div>
-            `).join('') || '<p style="color:#888">No stones yet</p>';
-
-            select.innerHTML = data.items.map(stone =>
-                `<option value="${stone.stone_id}">${stone.sponsor} (${stone.value})</option>`
-            ).join('') || '<option>No stones</option>';
-        }
-
-        async function loadInbox() {
-            const res = await fetch(`${currentAPI}/api/inbox/${currentToken}`);
-            const data = await res.json();
-
-            document.getElementById('inbox-count').textContent = data.pending_count;
-
-            const list = document.getElementById('inbox-list');
-            list.innerHTML = data.transfers.map(t => `
-                <div class="inbox-item">
-                    <div>
-                        <strong>${t.sponsor}</strong> ${t.value} from ${t.from.replace('user_', '')}
-                    </div>
-                    <button class="btn btn-primary" onclick="acceptTransfer('${t.transfer_id}')">Accept</button>
-                </div>
-            `).join('') || '<p style="color:#888">No pending transfers</p>';
-        }
-
-        async function loadUsers() {
-            const res = await fetch(`${currentAPI}/api/users`);
-            const data = await res.json();
-
-            const list = document.getElementById('users-list');
-            const select = document.getElementById('recipient-select');
-
-            list.innerHTML = data.users.map(u => `
-                <div class="user-card">
-                    <div class="user-avatar">👤</div>
-                    <div><strong>${u.username}</strong></div>
-                    <div style="color:#888">${u.stone_count} stones</div>
-                    <div style="color:#4ade80">${u.total_value_usd}</div>
-                </div>
-            `).join('');
-
-            select.innerHTML = data.users
-                .filter(u => u.username !== currentUsername)
-                .map(u => `<option value="${u.username}">${u.username}</option>`)
-                .join('');
-        }
-
-        async function loadStats() {
-            const res = await fetch(`${currentAPI}/api/stats`);
-            const data = await res.json();
-
-            document.getElementById('stat-users').textContent = data.stats.users;
-            document.getElementById('stat-stones').textContent = data.stats.stones;
-            document.getElementById('stat-value').textContent = data.stats.total_value_usd;
-            document.getElementById('stat-pending').textContent = data.stats.pending_transfers;
-        }
-
-        async function sendStone() {
-            const stoneId = document.getElementById('stone-select').value;
-            const recipient = document.getElementById('recipient-select').value;
-
-            if (!stoneId || !recipient) return;
-
-            // Use /api/transfer/notify for real-time WebSocket notifications
-            const res = await fetch(`${currentAPI}/api/transfer/notify?from_token=${currentToken}&to_username=${recipient}&stone_id=${stoneId}`, {
-                method: 'POST'
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                // WebSocket will handle the notification, but refresh anyway
-                await refreshAll();
-            } else {
-                showMessage(data.error || 'Failed to send', 'error');
-            }
-        }
-
-        async function acceptTransfer(transferId) {
-            const res = await fetch(`${currentAPI}/api/accept?token=${currentToken}&transfer_id=${transferId}`, {
-                method: 'POST'
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                showMessage('Transfer accepted!');
-                await refreshAll();
-            } else {
-                showMessage(data.error || 'Failed to accept', 'error');
-            }
-        }
-
-        function getIcon(type) {
-            const icons = {
-                gift_card: '🎁',
-                api_token: '🔑',
-                coupon: '🏷️',
-                event_ticket: '🎟️'
-            };
-            return icons[type] || '📦';
-        }
-
-        // Init
-        checkServers();
-        setInterval(checkServers, 30000);
+        // Refresh every 30 seconds
+        setInterval(() => {
+            checkServer(API_A, 'a');
+            checkServer(API_B, 'b');
+        }, 30000);
     </script>
 </body>
 </html>
