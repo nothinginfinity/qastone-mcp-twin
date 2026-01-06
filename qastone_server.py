@@ -1240,6 +1240,47 @@ async def api_stream_create(
     }
 
 
+@app.get("/api/stream/info")
+async def api_stream_system_info():
+    """Information about the streaming system."""
+    return {
+        "version": "1.0.0",
+        "available": STREAMING_AVAILABLE,
+        "description": "QA.Stone Chunked Live Streaming (HLS-style)",
+        "architecture": {
+            "method": "chunked",
+            "chunk_duration": "2-4 seconds (configurable)",
+            "latency": "4-10 seconds (comparable to HLS)",
+            "storage": "Each chunk = QA.Stone with full provenance"
+        },
+        "features": {
+            "cryptographic_provenance": "Every chunk has border_hash",
+            "chain_ordering": "Chunks linked via sequence numbers",
+            "twin_sync": "Streams replicated across twins",
+            "verified_playback": "Content hash verified on retrieval"
+        },
+        "use_cases": [
+            "Webinars with verified speaker identity",
+            "Product launches with cryptographic timestamps",
+            "Legal depositions with tamper-proof recording",
+            "Live events where provenance matters"
+        ],
+        "endpoints": {
+            "GET /api/stream/info": "System info (this endpoint)",
+            "GET /api/stream/live": "List live streams",
+            "GET /api/stream/recent": "List recent streams",
+            "POST /api/stream/create": "Create new stream",
+            "POST /api/stream/{id}/start": "Start streaming",
+            "POST /api/stream/{id}/chunk": "Add video chunk",
+            "POST /api/stream/{id}/end": "End stream",
+            "GET /api/stream/{id}": "Stream info",
+            "GET /api/stream/{id}/manifest": "HLS-style manifest",
+            "GET /api/stream/{id}/chunk/{seq}": "Get chunk data"
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
 @app.post("/api/stream/{session_id}/start")
 async def api_stream_start(session_id: str, streamer_token: str):
     """Start a stream (must be the owner)."""
@@ -1431,46 +1472,6 @@ async def api_stream_get_chunk(session_id: str, sequence: int):
         }
     except Exception as e:
         return {"error": str(e)}
-
-
-@app.get("/api/stream/info")
-async def api_stream_system_info():
-    """Information about the streaming system."""
-    return {
-        "version": "1.0.0",
-        "available": STREAMING_AVAILABLE,
-        "description": "QA.Stone Chunked Live Streaming (HLS-style)",
-        "architecture": {
-            "method": "chunked",
-            "chunk_duration": "2-4 seconds (configurable)",
-            "latency": "4-10 seconds (comparable to HLS)",
-            "storage": "Each chunk = QA.Stone with full provenance"
-        },
-        "features": {
-            "cryptographic_provenance": "Every chunk has border_hash",
-            "chain_ordering": "Chunks linked via sequence numbers",
-            "twin_sync": "Streams replicated across twins",
-            "verified_playback": "Content hash verified on retrieval"
-        },
-        "use_cases": [
-            "Webinars with verified speaker identity",
-            "Product launches with cryptographic timestamps",
-            "Legal depositions with tamper-proof recording",
-            "Live events where provenance matters"
-        ],
-        "endpoints": {
-            "GET /api/stream/live": "List live streams",
-            "GET /api/stream/recent": "List recent streams",
-            "POST /api/stream/create": "Create new stream",
-            "POST /api/stream/{id}/start": "Start streaming",
-            "POST /api/stream/{id}/chunk": "Add video chunk",
-            "POST /api/stream/{id}/end": "End stream",
-            "GET /api/stream/{id}": "Stream info",
-            "GET /api/stream/{id}/manifest": "HLS-style manifest",
-            "GET /api/stream/{id}/chunk/{seq}": "Get chunk data"
-        },
-        "server_instance": SERVER_INSTANCE
-    }
 
 
 # =============================================================================
