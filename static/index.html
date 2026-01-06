@@ -252,9 +252,13 @@
     <script>
         const API_A = 'https://qastone-mcp-twin-production.up.railway.app';
         const API_B = 'https://qa-stone-b-production.up.railway.app';
+        const WS_A = 'wss://qastone-mcp-twin-production.up.railway.app';
+        const WS_B = 'wss://qa-stone-b-production.up.railway.app';
         let currentAPI = API_A;
+        let currentWS = WS_A;
         let currentToken = null;
         let currentUsername = null;
+        let websocket = null;
 
         // Check server status
         async function checkServers() {
@@ -301,14 +305,109 @@
             document.getElementById('main-app').classList.remove('hidden');
             document.getElementById('username').textContent = currentUsername.charAt(0).toUpperCase() + currentUsername.slice(1);
 
+            // Connect WebSocket for real-time notifications
+            connectWebSocket();
+
             await refreshAll();
         }
 
         function logout() {
+            // Disconnect WebSocket
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
             currentToken = null;
             currentUsername = null;
             document.getElementById('login-section').classList.remove('hidden');
             document.getElementById('main-app').classList.add('hidden');
+        }
+
+        function connectWebSocket() {
+            if (websocket) websocket.close();
+
+            const wsUrl = `${currentWS}/ws/${currentToken}`;
+            websocket = new WebSocket(wsUrl);
+
+            websocket.onopen = () => {
+                console.log('WebSocket connected');
+                showMessage('Real-time notifications enabled', 'success');
+            };
+
+            websocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+
+            websocket.onclose = () => {
+                console.log('WebSocket disconnected');
+                // Reconnect after 3 seconds if still logged in
+                if (currentToken) {
+                    setTimeout(connectWebSocket, 3000);
+                }
+            };
+
+            websocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            // Send ping every 25 seconds to keep alive
+            setInterval(() => {
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                    websocket.send(JSON.stringify({ type: 'ping' }));
+                }
+            }, 25000);
+        }
+
+        function handleWebSocketMessage(data) {
+            console.log('WS message:', data);
+
+            switch (data.type) {
+                case 'connected':
+                    console.log(`Connected to ${data.server_instance}`);
+                    break;
+
+                case 'transfer_received':
+                    showMessage(`📥 ${data.message}`, 'success');
+                    // Auto-refresh inbox
+                    loadInbox();
+                    // Play notification sound (optional)
+                    playNotificationSound();
+                    break;
+
+                case 'transfer_sent':
+                    showMessage(`📤 ${data.message}`, 'success');
+                    // Auto-refresh wallet
+                    loadWallet();
+                    break;
+
+                case 'server_event':
+                    showMessage(`🔔 ${data.message}`, 'success');
+                    break;
+
+                case 'hot_swap':
+                    showMessage(`🔄 Server swap: ${data.message}`, 'success');
+                    break;
+
+                case 'heartbeat':
+                    // Silent heartbeat
+                    break;
+            }
+        }
+
+        function playNotificationSound() {
+            // Simple beep using Web Audio API
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = ctx.createOscillator();
+                const gain = ctx.createGain();
+                oscillator.connect(gain);
+                gain.connect(ctx.destination);
+                oscillator.frequency.value = 800;
+                gain.gain.value = 0.1;
+                oscillator.start();
+                setTimeout(() => oscillator.stop(), 150);
+            } catch (e) {}
         }
 
         async function refreshAll() {
@@ -399,13 +498,14 @@
 
             if (!stoneId || !recipient) return;
 
-            const res = await fetch(`${currentAPI}/api/transfer?from_token=${currentToken}&to_username=${recipient}&stone_id=${stoneId}`, {
+            // Use /api/transfer/notify for real-time WebSocket notifications
+            const res = await fetch(`${currentAPI}/api/transfer/notify?from_token=${currentToken}&to_username=${recipient}&stone_id=${stoneId}`, {
                 method: 'POST'
             });
             const data = await res.json();
 
             if (data.success) {
-                showMessage(`Sent to ${recipient}!`);
+                // WebSocket will handle the notification, but refresh anyway
                 await refreshAll();
             } else {
                 showMessage(data.error || 'Failed to send', 'error');

@@ -28,13 +28,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 import httpx
+import asyncio
 from pathlib import Path
 
 from redis_accounts import (
@@ -344,6 +345,58 @@ TOOL_HANDLERS = {
 STATIC_DIR = Path(__file__).parent / "static"
 
 
+# =============================================================================
+# WEBSOCKET CONNECTION MANAGER
+# =============================================================================
+
+class ConnectionManager:
+    """Manages WebSocket connections for real-time notifications"""
+
+    def __init__(self):
+        # Map user_id -> list of WebSocket connections
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, user_id: str):
+        await websocket.accept()
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
+        logger.info(f"WebSocket connected: {user_id} (total: {len(self.active_connections[user_id])})")
+
+    def disconnect(self, websocket: WebSocket, user_id: str):
+        if user_id in self.active_connections:
+            if websocket in self.active_connections[user_id]:
+                self.active_connections[user_id].remove(websocket)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+        logger.info(f"WebSocket disconnected: {user_id}")
+
+    async def notify_user(self, user_id: str, message: dict):
+        """Send notification to all connections for a user"""
+        if user_id in self.active_connections:
+            dead_connections = []
+            for connection in self.active_connections[user_id]:
+                try:
+                    await connection.send_json(message)
+                except:
+                    dead_connections.append(connection)
+            # Clean up dead connections
+            for conn in dead_connections:
+                self.active_connections[user_id].remove(conn)
+
+    async def broadcast(self, message: dict):
+        """Broadcast to all connected users"""
+        for user_id in list(self.active_connections.keys()):
+            await self.notify_user(user_id, message)
+
+    def get_connected_users(self) -> List[str]:
+        return list(self.active_connections.keys())
+
+
+# Global connection manager
+ws_manager = ConnectionManager()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve the web UI"""
@@ -507,6 +560,108 @@ async def api_mint(username: str, sponsor: str, type: str, value_cents: int):
 @app.get("/api/stats")
 async def api_stats():
     return handle_system_stats({})
+
+
+# =============================================================================
+# WEBSOCKET ENDPOINTS
+# =============================================================================
+
+@app.websocket("/ws/{token}")
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    """WebSocket connection for real-time notifications"""
+    user_id = authenticate(token)
+    if not user_id:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
+
+    await ws_manager.connect(websocket, user_id)
+
+    try:
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "user_id": user_id,
+            "server_instance": SERVER_INSTANCE,
+            "message": f"Connected to Twin {SERVER_INSTANCE.upper()}"
+        })
+
+        # Keep connection alive and handle incoming messages
+        while True:
+            try:
+                data = await asyncio.wait_for(websocket.receive_json(), timeout=30.0)
+                # Handle ping/pong for keepalive
+                if data.get("type") == "ping":
+                    await websocket.send_json({"type": "pong"})
+            except asyncio.TimeoutError:
+                # Send heartbeat
+                await websocket.send_json({
+                    "type": "heartbeat",
+                    "server_instance": SERVER_INSTANCE,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, user_id)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        ws_manager.disconnect(websocket, user_id)
+
+
+@app.get("/api/ws/status")
+async def ws_status():
+    """Get WebSocket connection status"""
+    return {
+        "connected_users": ws_manager.get_connected_users(),
+        "total_connections": sum(len(conns) for conns in ws_manager.active_connections.values()),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# Override transfer to add notifications
+@app.post("/api/transfer/notify")
+async def api_transfer_with_notify(from_token: str, to_username: str, stone_id: str):
+    """Transfer with WebSocket notification to recipient"""
+    result = handle_send_to_user({
+        "from_token": from_token,
+        "to_username": to_username,
+        "stone_id": stone_id
+    })
+
+    if result.get("success"):
+        # Notify recipient via WebSocket
+        to_user_id = generate_user_id(to_username)
+        await ws_manager.notify_user(to_user_id, {
+            "type": "transfer_received",
+            "from": result.get("from"),
+            "stone_id": stone_id,
+            "transfer_id": result.get("transfer_id"),
+            "message": f"You received a stone from {result.get('from', 'someone').replace('user_', '')}!"
+        })
+
+        # Also notify sender of success
+        from_user_id = authenticate(from_token)
+        if from_user_id:
+            await ws_manager.notify_user(from_user_id, {
+                "type": "transfer_sent",
+                "to": to_user_id,
+                "stone_id": stone_id,
+                "transfer_id": result.get("transfer_id"),
+                "message": f"Stone sent to {to_username}!"
+            })
+
+    return result
+
+
+# Broadcast server event (for hot-swap notifications)
+@app.post("/api/broadcast")
+async def api_broadcast(message: str, event_type: str = "server_event"):
+    """Broadcast a message to all connected users"""
+    await ws_manager.broadcast({
+        "type": event_type,
+        "message": message,
+        "server_instance": SERVER_INSTANCE,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    return {"success": True, "recipients": ws_manager.get_connected_users()}
 
 
 # =============================================================================
