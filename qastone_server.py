@@ -30,10 +30,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import uvicorn
 import httpx
+from pathlib import Path
 
 from redis_accounts import (
     create_account,
@@ -338,20 +340,24 @@ TOOL_HANDLERS = {
 # HTTP ENDPOINTS
 # =============================================================================
 
-@app.get("/")
+# Static files directory
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+@app.get("/", response_class=HTMLResponse)
 async def root():
-    return {
+    """Serve the web UI"""
+    index_file = STATIC_DIR / "index.html"
+    if index_file.exists():
+        return HTMLResponse(content=index_file.read_text(), status_code=200)
+    # Fallback to JSON if no UI
+    return JSONResponse({
         "service": "QA.Stone MCP Server",
         "instance": SERVER_INSTANCE,
         "version": SERVER_VERSION,
         "status": "running",
-        "endpoints": {
-            "mcp": "/mcp",
-            "health": "/health",
-            "info": "/info",
-            "tools": "/tools"
-        }
-    }
+        "ui": "Visit /api/users to see users or deploy with static/index.html for web UI"
+    })
 
 
 @app.get("/health")
