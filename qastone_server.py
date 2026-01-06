@@ -54,6 +54,15 @@ from redis_accounts import (
     generate_user_id,
 )
 from qastone_mint import mint_offer
+from qastone_mcp_updates import (
+    transfer_as_mcp_update,
+    get_chain_status,
+    get_recent_chain,
+    verify_mcp_stone,
+    MCPStoneUpdate,
+    create_mcp_stone_update,
+    apply_mcp_stone_update,
+)
 
 # =============================================================================
 # CONFIG
@@ -662,6 +671,131 @@ async def api_broadcast(message: str, event_type: str = "server_event"):
         "timestamp": datetime.now(timezone.utc).isoformat()
     })
     return {"success": True, "recipients": ws_manager.get_connected_users()}
+
+
+# =============================================================================
+# MCP STONE UPDATES - QA.Stone IS the MCP Update
+# =============================================================================
+
+@app.post("/api/mcp-transfer")
+async def api_mcp_transfer(from_token: str, to_username: str, stone_id: str):
+    """
+    Transfer a stone as a true MCP Stone Update.
+
+    This creates a cryptographically signed, chainable stone that:
+    1. IS the MCP message (not just data)
+    2. Links to previous stone (blockchain-like)
+    3. Can be verified and replayed on any MCP server
+    4. Produces identical results regardless of which twin processes it
+    """
+    result = transfer_as_mcp_update(
+        from_token=from_token,
+        to_username=to_username,
+        stone_id=stone_id,
+        server_instance=SERVER_INSTANCE
+    )
+
+    # Send WebSocket notifications if successful
+    if result.get("success"):
+        to_user_id = generate_user_id(to_username)
+        from_user_id = authenticate(from_token)
+
+        # Notify recipient
+        await ws_manager.notify_user(to_user_id, {
+            "type": "mcp_stone_received",
+            "stone_update_id": result.get("stone_update_id"),
+            "chain_sequence": result.get("sequence_number"),
+            "from": from_user_id,
+            "message": f"MCP Stone Update #{result.get('sequence_number')} received!"
+        })
+
+        # Notify sender
+        if from_user_id:
+            await ws_manager.notify_user(from_user_id, {
+                "type": "mcp_stone_sent",
+                "stone_update_id": result.get("stone_update_id"),
+                "chain_sequence": result.get("sequence_number"),
+                "to": to_user_id,
+                "message": f"MCP Stone Update #{result.get('sequence_number')} created and applied!"
+            })
+
+        # Broadcast to all (for demo visibility)
+        await ws_manager.broadcast({
+            "type": "chain_update",
+            "stone_update_id": result.get("stone_update_id"),
+            "sequence": result.get("sequence_number"),
+            "action": "transfer",
+            "server_instance": SERVER_INSTANCE
+        })
+
+    return result
+
+
+@app.get("/api/chain/status")
+async def api_chain_status():
+    """Get the current MCP Stone chain status."""
+    status = get_chain_status()
+    status["server_instance"] = SERVER_INSTANCE
+    return status
+
+
+@app.get("/api/chain/recent")
+async def api_chain_recent(limit: int = 10):
+    """Get recent stones from the chain."""
+    return {
+        "stones": get_recent_chain(limit),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/chain/verify")
+async def api_chain_verify(stone_data: Dict[str, Any]):
+    """
+    Verify a stone can be applied.
+
+    Send the full stone JSON to verify it's valid and can be applied
+    to this MCP server with identical results.
+    """
+    try:
+        stone = MCPStoneUpdate.from_dict(stone_data)
+        verification = verify_mcp_stone(stone)
+        verification["server_instance"] = SERVER_INSTANCE
+        return verification
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": str(e),
+            "server_instance": SERVER_INSTANCE
+        }
+
+
+@app.get("/api/mcp-update/info")
+async def api_mcp_update_info():
+    """
+    Information about the MCP Stone Update system.
+
+    This endpoint explains the concept: QA.Stone IS the MCP Update.
+    """
+    return {
+        "concept": "QA.Stone as MCP Update",
+        "version": "2.0.0-mcp",
+        "description": "Each QA.Stone IS an MCP protocol message - cryptographically signed, chainable, and verifiable",
+        "features": {
+            "stone_is_message": "The stone contains the full MCP tools/call that created it",
+            "chained": "Each stone references the previous stone's hash (blockchain-like)",
+            "verifiable": "Any MCP server can validate the stone signature",
+            "deterministic": "Same stone + same state = identical result on any server",
+            "hot_swap_proof": "Transfer on Twin A, verify on Twin B - same chain!"
+        },
+        "endpoints": {
+            "POST /api/mcp-transfer": "Transfer stone as MCP update (creates chain entry)",
+            "GET /api/chain/status": "Current chain head and length",
+            "GET /api/chain/recent": "Recent stone updates",
+            "POST /api/chain/verify": "Verify a stone is valid"
+        },
+        "chain_status": get_chain_status(),
+        "server_instance": SERVER_INSTANCE
+    }
 
 
 # =============================================================================
