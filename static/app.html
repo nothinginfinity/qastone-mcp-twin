@@ -121,6 +121,14 @@
             </div>
 
             <nav class="p-4 space-y-1">
+                <button onclick="showPage('chat')" class="sidebar-link w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left" id="nav-chat">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                    </svg>
+                    <span>Chat</span>
+                    <span class="ml-auto text-xs text-purple-400">AI</span>
+                </button>
+
                 <button onclick="showPage('inbox')" class="sidebar-link w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left" id="nav-inbox">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path>
@@ -189,6 +197,81 @@
                     <div class="stone-card rounded-xl px-6 py-4 shadow-lg flex items-center space-x-3">
                         <span id="toast-icon" class="text-2xl">✅</span>
                         <span id="toast-message">Notification</span>
+                    </div>
+                </div>
+
+                <!-- Chat Page -->
+                <div id="page-chat" class="page hidden">
+                    <div class="flex h-[calc(100vh-8rem)]">
+                        <!-- Conversation List -->
+                        <div class="w-64 border-r border-gray-800 flex flex-col hidden md:flex">
+                            <div class="p-4 border-b border-gray-800">
+                                <button onclick="createNewChat()" class="w-full py-2 rounded-lg gradient-bg text-sm font-medium hover:opacity-90">
+                                    + New Chat
+                                </button>
+                            </div>
+                            <div class="p-4 border-b border-gray-800">
+                                <div class="text-xs text-gray-500 mb-2">Bot Type</div>
+                                <select id="chat-bot-type" class="w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm">
+                                    <option value="assistant">Assistant</option>
+                                    <option value="welcome">Welcome Guide</option>
+                                    <option value="creative">Creative</option>
+                                    <option value="debate">Debate</option>
+                                </select>
+                            </div>
+                            <div class="flex-1 overflow-y-auto p-2" id="chat-conversation-list">
+                                <p class="text-gray-500 text-sm p-2">No conversations yet</p>
+                            </div>
+                        </div>
+
+                        <!-- Chat Area -->
+                        <div class="flex-1 flex flex-col">
+                            <!-- Chat Header -->
+                            <div class="p-4 border-b border-gray-800 flex items-center justify-between">
+                                <div class="flex items-center space-x-3">
+                                    <div class="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
+                                        <span class="text-xl" id="chat-bot-icon">🤖</span>
+                                    </div>
+                                    <div>
+                                        <div class="font-medium" id="chat-title">AI Assistant</div>
+                                        <div class="text-xs text-gray-500">
+                                            <span id="chat-provider">Groq</span> •
+                                            <span id="chat-model">llama-3.1-70b</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <select id="chat-llm-provider" onchange="updateChatProvider()" class="px-3 py-2 rounded-lg bg-gray-800 border border-gray-700 text-sm">
+                                    <option value="groq">Groq (Fast)</option>
+                                    <option value="deepseek">DeepSeek</option>
+                                    <option value="gemini">Gemini</option>
+                                </select>
+                            </div>
+
+                            <!-- Messages -->
+                            <div class="flex-1 overflow-y-auto p-4 space-y-4" id="chat-messages">
+                                <div class="text-center text-gray-500 py-8">
+                                    <div class="text-4xl mb-4">💬</div>
+                                    <p>Start a conversation with AI</p>
+                                    <p class="text-sm mt-2">Every message is a verified QA.Stone with chain of custody</p>
+                                </div>
+                            </div>
+
+                            <!-- Input -->
+                            <div class="p-4 border-t border-gray-800">
+                                <div class="flex space-x-3">
+                                    <input type="text" id="chat-input" placeholder="Type your message..."
+                                        class="flex-1 px-4 py-3 rounded-xl bg-gray-800 border border-gray-700 focus:border-purple-500 focus:outline-none"
+                                        onkeypress="if(event.key==='Enter')sendChatMessage()">
+                                    <button onclick="sendChatMessage()" id="chat-send-btn" class="px-6 py-3 rounded-xl gradient-bg font-medium hover:opacity-90 transition">
+                                        Send
+                                    </button>
+                                </div>
+                                <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                                    <span id="chat-status">Ready</span>
+                                    <span id="chat-tokens">0 tokens used</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -341,7 +424,13 @@
         let currentToken = null;
         let currentUsername = null;
         let websocket = null;
-        let currentPage = 'inbox';
+        let currentPage = 'chat';
+
+        // Chat State
+        let currentConversationId = null;
+        let currentChatProvider = 'groq';
+        let currentBotType = 'assistant';
+        let chatTotalTokens = 0;
 
         // ========== Auth Functions ==========
         function showTab(tab) {
@@ -414,7 +503,7 @@
             document.getElementById('user-avatar').textContent = currentUsername.charAt(0).toUpperCase();
 
             connectWebSocket();
-            showPage('inbox');
+            showPage('chat');  // Default to chat page
             loadAll();
         }
 
@@ -459,6 +548,12 @@
                     showToast(`📤 ${data.message}`, 'success');
                     loadWallet();
                     break;
+                case 'chat_response':
+                    // Handle real-time chat response
+                    if (data.conversation_id === currentConversationId) {
+                        appendChatMessage(data.message);
+                    }
+                    break;
                 case 'connected':
                     console.log(`Connected to ${data.server_instance}`);
                     break;
@@ -490,6 +585,7 @@
 
             // Load page data
             switch (page) {
+                case 'chat': loadChatConversations(); break;
                 case 'inbox': loadInbox(); break;
                 case 'wallet': loadWallet(); break;
                 case 'compose': loadComposeData(); break;
@@ -770,6 +866,203 @@
                 document.getElementById('twin-b-status').textContent = 'Offline';
                 document.getElementById('twin-b-status').className = 'text-red-400';
             }
+        }
+
+        // ========== Chat Functions ==========
+        async function loadChatConversations() {
+            try {
+                const res = await fetch(`${currentAPI}/api/chat/conversations?user_token=${currentToken}`);
+                const data = await res.json();
+
+                const list = document.getElementById('chat-conversation-list');
+                if (!data.conversations || data.conversations.length === 0) {
+                    list.innerHTML = '<p class="text-gray-500 text-sm p-2">No conversations yet</p>';
+                    return;
+                }
+
+                list.innerHTML = data.conversations.map(c => `
+                    <button onclick="loadConversation('${c.conversation_id}')"
+                        class="w-full p-3 rounded-lg text-left hover:bg-gray-800 ${currentConversationId === c.conversation_id ? 'bg-gray-800' : ''} mb-1">
+                        <div class="text-sm font-medium truncate">${getBotIcon(c.bot_type)} ${c.bot_type}</div>
+                        <div class="text-xs text-gray-500">${c.message_count || 0} messages</div>
+                    </button>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load conversations:', e);
+            }
+        }
+
+        async function createNewChat() {
+            const botType = document.getElementById('chat-bot-type').value;
+            currentBotType = botType;
+
+            try {
+                const res = await fetch(`${currentAPI}/api/chat/conversation?user_token=${currentToken}&bot_type=${botType}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    currentConversationId = data.conversation_id;
+                    document.getElementById('chat-messages').innerHTML = `
+                        <div class="text-center text-gray-500 py-8">
+                            <div class="text-4xl mb-4">${getBotIcon(botType)}</div>
+                            <p>New conversation with ${botType} bot</p>
+                            <p class="text-sm mt-2">Say hello!</p>
+                        </div>
+                    `;
+                    document.getElementById('chat-title').textContent = `${botType.charAt(0).toUpperCase() + botType.slice(1)} Bot`;
+                    document.getElementById('chat-bot-icon').textContent = getBotIcon(botType);
+                    loadChatConversations();
+                    showToast('New chat created!', 'success');
+                } else {
+                    showToast(data.error || 'Failed to create chat', 'error');
+                }
+            } catch (e) {
+                showToast('Network error', 'error');
+            }
+        }
+
+        async function loadConversation(conversationId) {
+            currentConversationId = conversationId;
+
+            try {
+                const res = await fetch(`${currentAPI}/api/chat/conversation/${conversationId}?user_token=${currentToken}`);
+                const data = await res.json();
+
+                if (data.success) {
+                    renderChatMessages(data.messages);
+                    loadChatConversations();
+                }
+            } catch (e) {
+                console.error('Failed to load conversation:', e);
+            }
+        }
+
+        function renderChatMessages(messages) {
+            const container = document.getElementById('chat-messages');
+
+            if (!messages || messages.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-gray-500 py-8">
+                        <div class="text-4xl mb-4">💬</div>
+                        <p>Start a conversation with AI</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = messages.map(m => `
+                <div class="flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}">
+                    <div class="${m.role === 'user' ? 'bg-purple-600' : 'stone-card'} rounded-2xl px-4 py-3 max-w-[80%]">
+                        <div class="text-sm">${escapeHtml(m.content)}</div>
+                        <div class="text-xs ${m.role === 'user' ? 'text-purple-200' : 'text-gray-500'} mt-1 flex items-center space-x-2">
+                            <span>${m.author}</span>
+                            ${m.border_hash ? `<span class="font-mono">📜 ${m.border_hash.slice(0, 8)}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            // Scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendChatMessage(message) {
+            const container = document.getElementById('chat-messages');
+            const emptyState = container.querySelector('.text-center');
+            if (emptyState) emptyState.remove();
+
+            const div = document.createElement('div');
+            div.className = `flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`;
+            div.innerHTML = `
+                <div class="${message.role === 'user' ? 'bg-purple-600' : 'stone-card'} rounded-2xl px-4 py-3 max-w-[80%]">
+                    <div class="text-sm">${escapeHtml(message.content)}</div>
+                    <div class="text-xs ${message.role === 'user' ? 'text-purple-200' : 'text-gray-500'} mt-1 flex items-center space-x-2">
+                        <span>${message.author}</span>
+                        ${message.border_hash ? `<span class="font-mono">📜 ${message.border_hash.slice(0, 8)}</span>` : ''}
+                    </div>
+                </div>
+            `;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const content = input.value.trim();
+            if (!content) return;
+
+            // Create conversation if needed
+            if (!currentConversationId) {
+                await createNewChat();
+            }
+
+            // Show user message immediately
+            appendChatMessage({
+                role: 'user',
+                content: content,
+                author: currentUsername,
+                border_hash: '...'
+            });
+
+            input.value = '';
+            document.getElementById('chat-status').textContent = 'Thinking...';
+            document.getElementById('chat-send-btn').disabled = true;
+
+            try {
+                const provider = document.getElementById('chat-llm-provider').value;
+                const botType = document.getElementById('chat-bot-type').value;
+
+                const res = await fetch(`${currentAPI}/api/chat/message?user_token=${currentToken}&conversation_id=${currentConversationId}&content=${encodeURIComponent(content)}&provider=${provider}&bot_type=${botType}`, {
+                    method: 'POST'
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    // Update with verified message (replace placeholder)
+                    appendChatMessage(data.assistant_message);
+                    chatTotalTokens += data.tokens || 0;
+                    document.getElementById('chat-tokens').textContent = `${chatTotalTokens} tokens used`;
+                    document.getElementById('chat-provider').textContent = data.provider;
+                    document.getElementById('chat-model').textContent = data.model;
+                } else {
+                    showToast(data.error || 'Failed to send message', 'error');
+                }
+            } catch (e) {
+                showToast('Network error', 'error');
+            } finally {
+                document.getElementById('chat-status').textContent = 'Ready';
+                document.getElementById('chat-send-btn').disabled = false;
+            }
+        }
+
+        function updateChatProvider() {
+            const provider = document.getElementById('chat-llm-provider').value;
+            currentChatProvider = provider;
+            const models = {
+                'groq': 'llama-3.1-70b',
+                'deepseek': 'deepseek-chat',
+                'gemini': 'gemini-1.5-flash'
+            };
+            document.getElementById('chat-provider').textContent = provider.charAt(0).toUpperCase() + provider.slice(1);
+            document.getElementById('chat-model').textContent = models[provider] || provider;
+        }
+
+        function getBotIcon(botType) {
+            const icons = {
+                'welcome': '👋',
+                'assistant': '🤖',
+                'creative': '🎨',
+                'debate': '⚔️'
+            };
+            return icons[botType] || '🤖';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
         }
 
         // Initial setup

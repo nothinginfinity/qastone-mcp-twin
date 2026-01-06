@@ -2429,6 +2429,186 @@ async def federation_info():
 
 
 # =============================================================================
+# CHAT API - Multi-LLM Chat with Message Stones
+# =============================================================================
+
+try:
+    from llm_backends import ChatEngine, MessageStone, send_welcome_message, LLM_CONFIGS, BOT_PERSONAS
+    CHAT_AVAILABLE = True
+except ImportError:
+    CHAT_AVAILABLE = False
+
+
+@app.post("/api/chat/conversation")
+async def create_conversation(user_token: str, bot_type: str = "assistant"):
+    """Create a new chat conversation"""
+    if not CHAT_AVAILABLE:
+        return {"error": "Chat module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    engine = ChatEngine(get_redis())
+    conv = await engine.create_conversation(user_id, bot_type)
+
+    return {
+        "success": True,
+        **conv,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/chat/message")
+async def send_chat_message(
+    user_token: str,
+    conversation_id: str,
+    content: str,
+    provider: str = "groq",
+    bot_type: str = "assistant"
+):
+    """Send a message and get AI response"""
+    if not CHAT_AVAILABLE:
+        return {"error": "Chat module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    engine = ChatEngine(get_redis())
+    result = await engine.send_message(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        content=content,
+        provider=provider,
+        bot_type=bot_type
+    )
+
+    if result.get("success"):
+        # Notify via WebSocket
+        await ws_manager.notify_user(user_id, {
+            "type": "chat_response",
+            "conversation_id": conversation_id,
+            "message": result["assistant_message"],
+            "provider": result["provider"],
+        })
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/chat/conversation/{conversation_id}")
+async def get_conversation(conversation_id: str, user_token: str, limit: int = 50):
+    """Get conversation history"""
+    if not CHAT_AVAILABLE:
+        return {"error": "Chat module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    engine = ChatEngine(get_redis())
+    messages = await engine.get_conversation_history(conversation_id, limit)
+
+    return {
+        "success": True,
+        "conversation_id": conversation_id,
+        "messages": messages,
+        "count": len(messages),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/chat/conversations")
+async def list_conversations(user_token: str):
+    """List all conversations for user"""
+    if not CHAT_AVAILABLE:
+        return {"error": "Chat module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    engine = ChatEngine(get_redis())
+    conversations = await engine.get_user_conversations(user_id)
+
+    return {
+        "success": True,
+        "conversations": conversations,
+        "count": len(conversations),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/chat/welcome")
+async def trigger_welcome(user_token: str):
+    """Trigger welcome message for user"""
+    if not CHAT_AVAILABLE:
+        return {"error": "Chat module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    # Get username from user_id
+    username = user_id.replace("user_", "")
+
+    result = await send_welcome_message(user_id, username, get_redis())
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/chat/providers")
+async def list_chat_providers():
+    """List available LLM providers"""
+    if not CHAT_AVAILABLE:
+        return {"error": "Chat module not available", "providers": []}
+
+    providers = []
+    for key, config in LLM_CONFIGS.items():
+        providers.append({
+            "id": key,
+            "name": config.name,
+            "model": config.model,
+            "available": bool(os.getenv(config.api_key_env)),
+        })
+
+    return {
+        "providers": providers,
+        "bot_types": list(BOT_PERSONAS.keys()),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/chat/info")
+async def chat_info():
+    """Information about the chat system"""
+    return {
+        "version": "1.0.0",
+        "available": CHAT_AVAILABLE,
+        "description": "QA.Stone Chat - Multi-LLM messaging with verification",
+        "features": {
+            "message_stones": "Every message is a verified QA.Stone",
+            "multi_llm": "Gemini, DeepSeek, Groq backends",
+            "progressive": "Messages have LOD layers for efficient loading",
+            "chain": "Conversations are linked chains of stones",
+            "welcome_bot": "Automated onboarding for new users",
+        },
+        "providers": list(LLM_CONFIGS.keys()) if CHAT_AVAILABLE else [],
+        "bot_types": list(BOT_PERSONAS.keys()) if CHAT_AVAILABLE else [],
+        "endpoints": {
+            "POST /api/chat/conversation": "Create new conversation",
+            "POST /api/chat/message": "Send message, get AI response",
+            "GET /api/chat/conversation/{id}": "Get conversation history",
+            "GET /api/chat/conversations": "List user's conversations",
+            "POST /api/chat/welcome": "Trigger welcome message",
+            "GET /api/chat/providers": "List available LLM providers",
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
