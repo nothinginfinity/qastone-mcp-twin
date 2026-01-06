@@ -56,8 +56,9 @@ from qastone_mint import mint_offer
 # CONFIG
 # =============================================================================
 
+# Railway uses PORT env var, SERVER_PORT is fallback for local dev
 SERVER_INSTANCE = os.getenv("SERVER_INSTANCE", "a")
-SERVER_PORT = int(os.getenv("SERVER_PORT", "8301"))
+SERVER_PORT = int(os.getenv("PORT", os.getenv("SERVER_PORT", "8301")))
 SERVER_VERSION = os.getenv("SERVER_VERSION", "1.0.0")
 
 TWIN_A_URL = os.getenv("TWIN_A_URL", "http://localhost:8301")
