@@ -1,0 +1,11 @@
+# Railway deployment configuration
+# Deploy two services: qastone-a and qastone-b
+
+[build]
+builder = "dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 10
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
