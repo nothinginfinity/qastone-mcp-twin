@@ -1377,7 +1377,7 @@
             const mode = document.getElementById('create-session-mode').value;
 
             try {
-                const res = await fetch(`${currentAPI}/api/collab/session?host_token=${currentToken}&mode=${mode}`, {
+                const res = await fetch(`${currentAPI}/api/collab/session?user_token=${currentToken}&mode=${mode}`, {
                     method: 'POST'
                 });
                 const data = await res.json();
@@ -1403,7 +1403,7 @@
             }
 
             try {
-                const res = await fetch(`${currentAPI}/api/collab/session/${code}/join?guest_token=${currentToken}`, {
+                const res = await fetch(`${currentAPI}/api/collab/session/${code}/join?user_token=${currentToken}`, {
                     method: 'POST'
                 });
                 const data = await res.json();
