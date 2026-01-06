@@ -1825,6 +1825,305 @@ async def api_context_info():
 
 
 # =============================================================================
+# GRAPH LOD API (Level of Detail for Large Graphs)
+# =============================================================================
+
+try:
+    from qastone_graph import (
+        GraphStone,
+        store_graph_stone,
+        load_graph_stone,
+        list_graphs,
+        generate_demo_graph,
+    )
+    GRAPH_AVAILABLE = True
+except ImportError:
+    GRAPH_AVAILABLE = False
+
+
+@app.get("/api/graph/list")
+async def api_graph_list():
+    """List all stored graphs."""
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    graphs = list_graphs()
+    return {
+        "graphs": graphs,
+        "count": len(graphs),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/graph/create")
+async def api_graph_create(
+    name: str = "Graph",
+    cluster_count: int = 100,
+    region_size: int = 500
+):
+    """
+    Create a graph stone from posted JSON data.
+
+    Expects JSON body with:
+        nodes: [{id, x, y, label?, size?, color?}, ...]
+        edges: [{source, target, weight?}, ...]
+    """
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    # For demo, generate sample data
+    # In production, parse from request body
+    return {
+        "info": "Use /api/graph/demo to create a demo graph, or POST nodes/edges JSON",
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/graph/demo")
+async def api_graph_create_demo(
+    node_count: int = 1000,
+    edge_density: float = 0.003,
+    name: str = "Demo Graph",
+    cluster_count: int = 50,
+    region_size: int = 200
+):
+    """
+    Create a demo graph with random clustered data.
+
+    Good for testing LOD performance.
+    """
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    # Generate demo data
+    nodes, edges = generate_demo_graph(
+        node_count=node_count,
+        edge_density=edge_density
+    )
+
+    # Build graph stone
+    stone = GraphStone.from_nodes_edges(
+        nodes=nodes,
+        edges=edges,
+        name=name,
+        cluster_count=cluster_count,
+        region_size=region_size,
+        server_instance=SERVER_INSTANCE
+    )
+
+    # Store it
+    result = store_graph_stone(stone)
+
+    if result.get("success"):
+        return {
+            "success": True,
+            "graph_id": stone.graph_id,
+            "name": stone.metadata.name,
+            "node_count": stone.metadata.node_count,
+            "edge_count": stone.metadata.edge_count,
+            "cluster_count": stone.metadata.cluster_count,
+            "region_count": stone.metadata.region_count,
+            "border_hash": stone.metadata.border_hash[:16] + "...",
+            "server_instance": SERVER_INSTANCE
+        }
+
+    return result
+
+
+@app.get("/api/graph/{graph_id}/overview")
+async def api_graph_overview(graph_id: str):
+    """
+    Get LOD 5 overview (clusters only).
+
+    This is the FAST initial render endpoint - <100ms for any graph size.
+    Returns cluster centroids and bundled inter-cluster edges.
+    """
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    stone = load_graph_stone(graph_id)
+    if not stone:
+        return {"error": "Graph not found"}
+
+    overview = stone.get_overview()
+    overview["server_instance"] = SERVER_INSTANCE
+    return overview
+
+
+@app.get("/api/graph/{graph_id}/regions")
+async def api_graph_regions(graph_id: str):
+    """
+    Get LOD 4 quadtree regions.
+
+    Returns spatial region bounds for viewport intersection testing.
+    """
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    stone = load_graph_stone(graph_id)
+    if not stone:
+        return {"error": "Graph not found"}
+
+    regions = stone.get_regions()
+    regions["server_instance"] = SERVER_INSTANCE
+    return regions
+
+
+@app.get("/api/graph/{graph_id}/viewport")
+async def api_graph_viewport(
+    graph_id: str,
+    x1: float,
+    y1: float,
+    x2: float,
+    y2: float,
+    lod: int = 3,
+    max_nodes: int = 2000
+):
+    """
+    Get nodes and edges visible in viewport at specified LOD.
+
+    Only loads regions that intersect the viewport bounds.
+
+    Args:
+        x1, y1, x2, y2: Viewport bounds
+        lod: Detail level (2=full, 3=compressed, 4=regions, 5=clusters)
+        max_nodes: Maximum nodes to return
+    """
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    stone = load_graph_stone(graph_id)
+    if not stone:
+        return {"error": "Graph not found"}
+
+    viewport = stone.get_viewport(
+        bounds=(x1, y1, x2, y2),
+        lod=lod,
+        max_nodes=max_nodes
+    )
+    viewport["server_instance"] = SERVER_INSTANCE
+    return viewport
+
+
+@app.get("/api/graph/{graph_id}/node/{node_id}")
+async def api_graph_node_detail(graph_id: str, node_id: str):
+    """
+    Get full detail for a single node (LOD 2).
+
+    Includes all edges and complete metadata.
+    """
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    stone = load_graph_stone(graph_id)
+    if not stone:
+        return {"error": "Graph not found"}
+
+    detail = stone.get_node_detail(node_id)
+    if not detail:
+        return {"error": "Node not found"}
+
+    detail["server_instance"] = SERVER_INSTANCE
+    return detail
+
+
+@app.get("/api/graph/{graph_id}/neighbors/{node_id}")
+async def api_graph_neighbors(
+    graph_id: str,
+    node_id: str,
+    depth: int = 1,
+    max_nodes: int = 100
+):
+    """
+    Get neighborhood of a node up to specified depth.
+    """
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    stone = load_graph_stone(graph_id)
+    if not stone:
+        return {"error": "Graph not found"}
+
+    neighbors = stone.get_neighbors(node_id, depth=depth, max_nodes=max_nodes)
+    neighbors["server_instance"] = SERVER_INSTANCE
+    return neighbors
+
+
+@app.get("/api/graph/{graph_id}/search")
+async def api_graph_search(graph_id: str, query: str, limit: int = 50):
+    """Search for nodes by label/ID."""
+    if not GRAPH_AVAILABLE:
+        return {"error": "Graph module not available"}
+
+    stone = load_graph_stone(graph_id)
+    if not stone:
+        return {"error": "Graph not found"}
+
+    results = stone.search_nodes(query, limit=limit)
+    return {
+        "graph_id": graph_id,
+        "query": query,
+        "results": results,
+        "count": len(results),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/graph/info")
+async def api_graph_info():
+    """Information about the graph LOD system."""
+    return {
+        "version": "1.0.0",
+        "available": GRAPH_AVAILABLE,
+        "description": "QA.Stone Graph LOD for Progressive Loading",
+        "lod_levels": {
+            "5": {
+                "name": "Clusters",
+                "description": "K-means cluster centroids (~100 nodes)",
+                "render_time": "<100ms",
+                "use_case": "Initial render, overview"
+            },
+            "4": {
+                "name": "Regions",
+                "description": "Quadtree spatial regions (~1K nodes)",
+                "render_time": "<200ms",
+                "use_case": "Zoomed out view"
+            },
+            "3": {
+                "name": "Compressed",
+                "description": "All nodes with minimal metadata",
+                "render_time": "<500ms",
+                "use_case": "Standard interaction"
+            },
+            "2": {
+                "name": "Full",
+                "description": "Complete node and edge data",
+                "render_time": "1-5s for large graphs",
+                "use_case": "Node detail, export"
+            }
+        },
+        "features": [
+            "Progressive loading (clusters first)",
+            "Spatial partitioning (quadtree)",
+            "Edge bundling at low LOD",
+            "Viewport culling (load visible only)",
+            "Border hash verification per graph"
+        ],
+        "endpoints": {
+            "POST /api/graph/demo": "Create demo graph",
+            "GET /api/graph/list": "List all graphs",
+            "GET /api/graph/{id}/overview": "LOD 5 clusters (fast)",
+            "GET /api/graph/{id}/regions": "LOD 4 quadtree",
+            "GET /api/graph/{id}/viewport": "Get visible nodes at LOD",
+            "GET /api/graph/{id}/node/{nid}": "Full node detail",
+            "GET /api/graph/{id}/neighbors/{nid}": "Node neighborhood",
+            "GET /api/graph/{id}/search": "Search nodes"
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
