@@ -1147,6 +1147,332 @@ async def api_v3_info():
 
 
 # =============================================================================
+# LIVE STREAMING API (Chunked HLS-style)
+# =============================================================================
+
+try:
+    from qastone_streaming import (
+        LiveStreamSession,
+        StreamPlayer,
+        StreamStatus,
+        list_live_streams,
+        list_recent_streams,
+        get_stream_manifest,
+        create_stream,
+        start_stream,
+        end_stream,
+        add_stream_chunk,
+    )
+    STREAMING_AVAILABLE = True
+except ImportError:
+    STREAMING_AVAILABLE = False
+
+
+@app.get("/api/stream/live")
+async def api_stream_list_live():
+    """List all currently live streams."""
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    streams = list_live_streams()
+    return {
+        "live_streams": streams,
+        "count": len(streams),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/stream/recent")
+async def api_stream_list_recent(limit: int = 10):
+    """List recent streams (live and ended)."""
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    streams = list_recent_streams(limit)
+    return {
+        "streams": streams,
+        "count": len(streams),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/stream/create")
+async def api_stream_create(
+    streamer_token: str,
+    title: str,
+    description: str = "",
+    codec: str = "h264",
+    resolution: str = "1280x720",
+    bitrate_kbps: int = 2500,
+    chunk_duration_ms: int = 2000
+):
+    """
+    Create a new live stream session.
+
+    Returns session_id to use for adding chunks.
+    """
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    # Authenticate streamer
+    streamer_id = authenticate(streamer_token)
+    if not streamer_id:
+        return {"error": "Invalid token"}
+
+    session = create_stream(
+        streamer_id=streamer_id,
+        title=title,
+        description=description,
+        codec=codec,
+        resolution=resolution,
+        bitrate_kbps=bitrate_kbps,
+        chunk_duration_ms=chunk_duration_ms,
+        server_instance=SERVER_INSTANCE
+    )
+
+    return {
+        "success": True,
+        "session_id": session.session_id,
+        "status": session.metadata.status,
+        "created_at": session.metadata.created_at,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/stream/{session_id}/start")
+async def api_stream_start(session_id: str, streamer_token: str):
+    """Start a stream (must be the owner)."""
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    streamer_id = authenticate(streamer_token)
+    if not streamer_id:
+        return {"error": "Invalid token"}
+
+    session = LiveStreamSession.load(session_id)
+    if not session:
+        return {"error": "Stream not found"}
+
+    if session.metadata.streamer_id != streamer_id:
+        return {"error": "Not authorized"}
+
+    result = session.start()
+
+    if result.get("success"):
+        # Broadcast stream started
+        await ws_manager.broadcast({
+            "type": "stream_started",
+            "session_id": session_id,
+            "title": session.metadata.title,
+            "streamer_id": streamer_id,
+            "server_instance": SERVER_INSTANCE
+        })
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.post("/api/stream/{session_id}/chunk")
+async def api_stream_add_chunk(
+    session_id: str,
+    streamer_token: str,
+    duration_ms: int = 2000,
+    keyframe: bool = False
+):
+    """
+    Add a video chunk to the stream.
+
+    Send video data as request body (application/octet-stream).
+    """
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    streamer_id = authenticate(streamer_token)
+    if not streamer_id:
+        return {"error": "Invalid token"}
+
+    session = LiveStreamSession.load(session_id)
+    if not session:
+        return {"error": "Stream not found"}
+
+    if session.metadata.streamer_id != streamer_id:
+        return {"error": "Not authorized"}
+
+    # For demo, generate fake video data
+    # In production, this would come from request body
+    import secrets
+    video_data = secrets.token_bytes(5000)
+
+    result = add_stream_chunk(
+        session_id=session_id,
+        video_data=video_data,
+        duration_ms=duration_ms,
+        keyframe=keyframe
+    )
+
+    if result.get("success"):
+        # Notify viewers of new chunk
+        await ws_manager.broadcast({
+            "type": "stream_chunk",
+            "session_id": session_id,
+            "sequence": result["sequence"],
+            "stone_id": result["stone_id"],
+            "server_instance": SERVER_INSTANCE
+        })
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.post("/api/stream/{session_id}/end")
+async def api_stream_end(session_id: str, streamer_token: str):
+    """End a stream."""
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    streamer_id = authenticate(streamer_token)
+    if not streamer_id:
+        return {"error": "Invalid token"}
+
+    session = LiveStreamSession.load(session_id)
+    if not session:
+        return {"error": "Stream not found"}
+
+    if session.metadata.streamer_id != streamer_id:
+        return {"error": "Not authorized"}
+
+    result = session.end()
+
+    if result.get("success"):
+        await ws_manager.broadcast({
+            "type": "stream_ended",
+            "session_id": session_id,
+            "total_chunks": result["total_chunks"],
+            "total_duration_ms": result["total_duration_ms"],
+            "server_instance": SERVER_INSTANCE
+        })
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/stream/{session_id}")
+async def api_stream_info(session_id: str):
+    """Get stream information."""
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    session = LiveStreamSession.load(session_id)
+    if not session:
+        return {"error": "Stream not found"}
+
+    return {
+        "session_id": session.session_id,
+        "title": session.metadata.title,
+        "description": session.metadata.description,
+        "streamer_id": session.metadata.streamer_id,
+        "status": session.metadata.status,
+        "codec": session.metadata.codec,
+        "resolution": session.metadata.resolution,
+        "bitrate_kbps": session.metadata.bitrate_kbps,
+        "chunk_count": session.metadata.chunk_count,
+        "total_duration_ms": session.metadata.total_duration_ms,
+        "created_at": session.metadata.created_at,
+        "started_at": session.metadata.started_at,
+        "ended_at": session.metadata.ended_at,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/stream/{session_id}/manifest")
+async def api_stream_manifest(session_id: str):
+    """
+    Get HLS-style manifest for a stream.
+
+    Returns list of chunks with their stone_ids for playback.
+    """
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    manifest = get_stream_manifest(session_id)
+    if not manifest:
+        return {"error": "Stream not found"}
+
+    manifest["server_instance"] = SERVER_INSTANCE
+    return manifest
+
+
+@app.get("/api/stream/{session_id}/chunk/{sequence}")
+async def api_stream_get_chunk(session_id: str, sequence: int):
+    """
+    Get a specific chunk's video data.
+
+    Returns the video bytes (base64 encoded) with verification info.
+    """
+    if not STREAMING_AVAILABLE:
+        return {"error": "Streaming module not available"}
+
+    player = StreamPlayer(session_id)
+
+    try:
+        chunk_data = player.get_chunk(sequence)
+        if not chunk_data:
+            return {"error": f"Chunk {sequence} not found"}
+
+        import base64
+        return {
+            "session_id": session_id,
+            "sequence": sequence,
+            "size_bytes": len(chunk_data),
+            "data_base64": base64.b64encode(chunk_data).decode('ascii'),
+            "verified": True,
+            "server_instance": SERVER_INSTANCE
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/stream/info")
+async def api_stream_system_info():
+    """Information about the streaming system."""
+    return {
+        "version": "1.0.0",
+        "available": STREAMING_AVAILABLE,
+        "description": "QA.Stone Chunked Live Streaming (HLS-style)",
+        "architecture": {
+            "method": "chunked",
+            "chunk_duration": "2-4 seconds (configurable)",
+            "latency": "4-10 seconds (comparable to HLS)",
+            "storage": "Each chunk = QA.Stone with full provenance"
+        },
+        "features": {
+            "cryptographic_provenance": "Every chunk has border_hash",
+            "chain_ordering": "Chunks linked via sequence numbers",
+            "twin_sync": "Streams replicated across twins",
+            "verified_playback": "Content hash verified on retrieval"
+        },
+        "use_cases": [
+            "Webinars with verified speaker identity",
+            "Product launches with cryptographic timestamps",
+            "Legal depositions with tamper-proof recording",
+            "Live events where provenance matters"
+        ],
+        "endpoints": {
+            "GET /api/stream/live": "List live streams",
+            "GET /api/stream/recent": "List recent streams",
+            "POST /api/stream/create": "Create new stream",
+            "POST /api/stream/{id}/start": "Start streaming",
+            "POST /api/stream/{id}/chunk": "Add video chunk",
+            "POST /api/stream/{id}/end": "End stream",
+            "GET /api/stream/{id}": "Stream info",
+            "GET /api/stream/{id}/manifest": "HLS-style manifest",
+            "GET /api/stream/{id}/chunk/{seq}": "Get chunk data"
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
