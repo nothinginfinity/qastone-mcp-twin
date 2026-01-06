@@ -2609,6 +2609,644 @@ async def chat_info():
 
 
 # =============================================================================
+# COLLAB API - Brainstorm, Debate, and Bidding Sessions
+# =============================================================================
+
+try:
+    from collab_engine import (
+        SessionManager, CollabSession, Participant,
+        SessionMode, SessionStatus, DebateTeam
+    )
+    COLLAB_AVAILABLE = True
+except ImportError:
+    COLLAB_AVAILABLE = False
+
+# Initialize session manager
+_session_manager = None
+
+def get_session_manager():
+    global _session_manager
+    if _session_manager is None and COLLAB_AVAILABLE:
+        _session_manager = SessionManager(get_redis())
+    return _session_manager
+
+
+@app.post("/api/collab/session")
+async def create_collab_session(
+    user_token: str,
+    mode: str = "brainstorm",
+    starting_context: Optional[str] = None
+):
+    """Create a new collaborative session"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    username = user_id.replace("user_", "")
+    manager = get_session_manager()
+
+    session = manager.create(
+        host_id=user_id,
+        host_name=username.capitalize(),
+        mode=mode,
+    )
+
+    return {
+        "success": True,
+        "session_id": session.session_id,
+        "invite_code": session.invite_code,
+        "mode": session.mode,
+        "status": session.status,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/collab/session/{session_id}")
+async def get_collab_session(session_id: str, user_token: str):
+    """Get session state"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    return {
+        "success": True,
+        "session": session.to_dict(),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/collab/session/{invite_code}/join")
+async def join_collab_session(invite_code: str, user_token: str):
+    """Join a session via invite code"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    username = user_id.replace("user_", "")
+    manager = get_session_manager()
+
+    result = manager.join(
+        invite_code=invite_code,
+        guest_id=user_id,
+        guest_name=username.capitalize(),
+    )
+
+    if result["ok"]:
+        # Notify host via WebSocket
+        session = manager.get_by_code(invite_code)
+        if session:
+            await ws_manager.notify_user(session.host.user_id, {
+                "type": "collab_guest_joined",
+                "session_id": session.session_id,
+                "guest": username.capitalize(),
+            })
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.post("/api/collab/session/{session_id}/message")
+async def add_collab_message(
+    session_id: str,
+    user_token: str,
+    content: str,
+    message_type: str = "chat"
+):
+    """Add a message to the session"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    # Determine participant role
+    if user_id == session.host.user_id:
+        participant = "host"
+    elif session.guest and user_id == session.guest.user_id:
+        participant = "guest"
+    else:
+        return {"error": "Not a participant"}
+
+    msg = session.add_message(participant, message_type, content)
+    manager.save(session)
+
+    # Notify other participant
+    other_user = session.guest.user_id if participant == "host" else session.host.user_id
+    if other_user:
+        await ws_manager.notify_user(other_user, {
+            "type": "collab_message",
+            "session_id": session_id,
+            "message": msg.to_dict(),
+        })
+
+    return {
+        "success": True,
+        "message": msg.to_dict(),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.delete("/api/collab/session/{session_id}")
+async def end_collab_session(session_id: str, user_token: str):
+    """End a session"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    if user_id != session.host.user_id:
+        return {"error": "Only host can end session"}
+
+    manager.end(session_id)
+
+    # Notify guest
+    if session.guest:
+        await ws_manager.notify_user(session.guest.user_id, {
+            "type": "collab_session_ended",
+            "session_id": session_id,
+        })
+
+    return {
+        "success": True,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/collab/sessions")
+async def list_collab_sessions(user_token: str):
+    """List user's collab sessions"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    sessions = manager.list_user_sessions(user_id)
+
+    return {
+        "success": True,
+        "sessions": sessions,
+        "count": len(sessions),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
+# BRAINSTORM MODE API
+# =============================================================================
+
+@app.post("/api/brainstorm/idea")
+async def add_brainstorm_idea(
+    session_id: str,
+    user_token: str,
+    content: str
+):
+    """Add an idea to a brainstorm session"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    if session.mode != SessionMode.BRAINSTORM.value:
+        return {"error": "Session is not in brainstorm mode"}
+
+    username = user_id.replace("user_", "")
+    idea = session.add_idea(user_id, username.capitalize(), content)
+    manager.save(session)
+
+    # Notify other participant
+    other_user = None
+    if user_id == session.host.user_id and session.guest:
+        other_user = session.guest.user_id
+    elif session.guest and user_id == session.guest.user_id:
+        other_user = session.host.user_id
+
+    if other_user:
+        await ws_manager.notify_user(other_user, {
+            "type": "brainstorm_idea_added",
+            "session_id": session_id,
+            "idea": idea.to_dict(),
+        })
+
+    return {
+        "success": True,
+        "idea": idea.to_dict(),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/brainstorm/vote")
+async def vote_brainstorm_idea(
+    session_id: str,
+    idea_id: str,
+    user_token: str
+):
+    """Vote for an idea"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    success = session.vote_idea(idea_id, user_id)
+    if success:
+        manager.save(session)
+
+    return {
+        "success": success,
+        "error": None if success else "Already voted or idea not found",
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/brainstorm/expand")
+async def expand_brainstorm_idea(
+    session_id: str,
+    idea_id: str,
+    user_token: str,
+    provider: str = "groq"
+):
+    """Expand an idea using LLM"""
+    if not COLLAB_AVAILABLE or not CHAT_AVAILABLE:
+        return {"error": "Required modules not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    # Find the idea
+    idea = None
+    for i in session.ideas:
+        if i["idea_id"] == idea_id:
+            idea = i
+            break
+
+    if not idea:
+        return {"error": "Idea not found"}
+
+    # Call LLM to expand
+    from llm_backends import call_llm
+
+    messages = [
+        {"role": "system", "content": "You are a creative brainstorming assistant. Expand on the following idea with 2-3 concrete implementation suggestions. Be concise but insightful."},
+        {"role": "user", "content": f"Idea: {idea['content']}\n\nExpand on this idea:"}
+    ]
+
+    response = await call_llm(provider, messages)
+
+    if "error" in response:
+        return {"success": False, "error": response["error"]}
+
+    expansion = response["content"]
+    session.expand_idea(idea_id, expansion)
+    manager.save(session)
+
+    return {
+        "success": True,
+        "expansion": expansion,
+        "provider": response["provider"],
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/brainstorm/ranked")
+async def get_ranked_ideas(session_id: str, user_token: str):
+    """Get ideas ranked by votes"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    return {
+        "success": True,
+        "ideas": session.get_ranked_ideas(),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
+# DEBATE MODE API
+# =============================================================================
+
+@app.post("/api/debate/setup-teams")
+async def setup_debate_teams(
+    session_id: str,
+    user_token: str,
+    topic: str,
+    team_pro_name: str = "Pro",
+    team_con_name: str = "Con"
+):
+    """Setup debate with topic and teams"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    if session.mode != SessionMode.DEBATE.value:
+        return {"error": "Session is not in debate mode"}
+
+    teams = [
+        DebateTeam(team_id="team_pro", name=team_pro_name, position="pro"),
+        DebateTeam(team_id="team_con", name=team_con_name, position="con"),
+    ]
+
+    session.setup_debate(topic, teams)
+    manager.save(session)
+
+    return {
+        "success": True,
+        "topic": topic,
+        "teams": [t.to_dict() for t in teams],
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/debate/argument")
+async def submit_debate_argument(
+    session_id: str,
+    team_id: str,
+    user_token: str,
+    content: str
+):
+    """Submit a debate argument"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    username = user_id.replace("user_", "")
+    arg = session.submit_argument(team_id, user_id, username.capitalize(), content)
+    manager.save(session)
+
+    return {
+        "success": True,
+        "argument": arg.to_dict(),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/debate/llm-advocate")
+async def request_llm_advocate(
+    session_id: str,
+    team_id: str,
+    user_token: str,
+    provider: str = "groq"
+):
+    """Request LLM to argue for a team"""
+    if not COLLAB_AVAILABLE or not CHAT_AVAILABLE:
+        return {"error": "Required modules not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    # Find team
+    team = None
+    for t in session.debate_teams:
+        if t["team_id"] == team_id:
+            team = t
+            break
+
+    if not team:
+        return {"error": "Team not found"}
+
+    # Build context from previous arguments
+    context = f"Topic: {session.debate_topic}\n\n"
+    for arg in session.debate_arguments:
+        context += f"{arg['author_name']} ({arg['team_id']}): {arg['content']}\n\n"
+
+    from llm_backends import call_llm
+
+    messages = [
+        {"role": "system", "content": f"You are an AI debate advocate for the '{team['name']}' team (position: {team['position']}). Make a compelling argument for your position. Be persuasive but fair. Keep it to 2-3 paragraphs."},
+        {"role": "user", "content": f"{context}\n\nMake your next argument for the {team['position']} position:"}
+    ]
+
+    response = await call_llm(provider, messages)
+
+    if "error" in response:
+        return {"success": False, "error": response["error"]}
+
+    # Submit as LLM argument
+    arg = session.submit_argument(
+        team_id,
+        f"llm_{provider}",
+        f"AI Advocate ({provider.capitalize()})",
+        response["content"]
+    )
+    manager.save(session)
+
+    return {
+        "success": True,
+        "argument": arg.to_dict(),
+        "provider": response["provider"],
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/debate/judge")
+async def judge_debate_argument(
+    session_id: str,
+    argument_id: str,
+    score: int,
+    user_token: str,
+    reason: str = ""
+):
+    """Judge an argument (score 1-10)"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    if not 1 <= score <= 10:
+        return {"error": "Score must be 1-10"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    success = session.judge_argument(argument_id, user_id, score, reason)
+    if success:
+        manager.save(session)
+
+    return {
+        "success": success,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/debate/next-round")
+async def advance_debate_round(session_id: str, user_token: str):
+    """Advance to next debate round"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    new_round = session.next_round()
+    manager.save(session)
+
+    return {
+        "success": True,
+        "round": new_round,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/debate/leaderboard")
+async def get_debate_leaderboard(session_id: str, user_token: str):
+    """Get debate team scores"""
+    if not COLLAB_AVAILABLE:
+        return {"error": "Collab module not available"}
+
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"error": "Invalid token"}
+
+    manager = get_session_manager()
+    session = manager.get(session_id)
+
+    if not session:
+        return {"error": "Session not found"}
+
+    return {
+        "success": True,
+        "leaderboard": session.get_debate_leaderboard(),
+        "current_round": session.debate_round,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/collab/info")
+async def collab_info():
+    """Information about the collab system"""
+    return {
+        "version": "1.0.0",
+        "available": COLLAB_AVAILABLE,
+        "description": "QA.Stone Collab - Brainstorm, Debate, and Bidding sessions",
+        "modes": {
+            "brainstorm": "Add ideas, vote, expand with LLM",
+            "debate": "Teams argue positions with LLM advocates",
+            "bidding": "Competitive offers (coming soon)",
+        },
+        "features": {
+            "qa_stones": "All messages and events are verified QA.Stones",
+            "real_time": "WebSocket notifications for live collaboration",
+            "permissions": "Contribution-based permission escalation",
+            "llm_integration": "AI expansion and advocacy",
+        },
+        "endpoints": {
+            "POST /api/collab/session": "Create session",
+            "GET /api/collab/session/{id}": "Get session",
+            "POST /api/collab/session/{code}/join": "Join via invite code",
+            "POST /api/brainstorm/idea": "Add idea",
+            "POST /api/brainstorm/vote": "Vote for idea",
+            "POST /api/brainstorm/expand": "Expand idea with LLM",
+            "POST /api/debate/setup-teams": "Setup debate",
+            "POST /api/debate/argument": "Submit argument",
+            "POST /api/debate/llm-advocate": "LLM argues for team",
+            "POST /api/debate/judge": "Score argument",
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
