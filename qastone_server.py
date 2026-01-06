@@ -2125,6 +2125,301 @@ async def api_graph_info():
 
 
 # =============================================================================
+# FEDERATION API - Registry, Stones, Transport
+# =============================================================================
+
+# Pydantic models for federation
+class WalletRegistration(BaseModel):
+    alias: str
+    wallet_hash: str
+    public_key: str
+    stones_url: Optional[str] = None
+    inbox_url: Optional[str] = None
+
+class StonePublish(BaseModel):
+    stone: Dict[str, Any]
+
+class InboxMessage(BaseModel):
+    envelope: Dict[str, Any]
+
+# Redis keys for federation
+WALLET_PREFIX = "federation:wallet:"
+STONES_PREFIX = "federation:stones:"
+INBOX_PREFIX = "federation:inbox:"
+PEERS_KEY = "federation:peers"
+
+
+@app.post("/api/v1/registry/wallet")
+async def register_wallet(registration: WalletRegistration):
+    """Register a wallet in the federated registry."""
+    try:
+        from redis_accounts import get_redis
+        r = get_redis()
+
+        wallet_data = {
+            "alias": registration.alias,
+            "wallet_hash": registration.wallet_hash,
+            "public_key": registration.public_key,
+            "stones_url": registration.stones_url or f"/api/v1/stones/{registration.wallet_hash}",
+            "inbox_url": registration.inbox_url or f"/api/v1/inbox/{registration.wallet_hash}",
+            "registered_at": datetime.now(timezone.utc).isoformat(),
+            "registry": SERVER_INSTANCE
+        }
+
+        r.hset(f"{WALLET_PREFIX}{registration.wallet_hash}", mapping=wallet_data)
+        r.sadd("federation:wallets", registration.wallet_hash)
+
+        return {
+            "ok": True,
+            "registered": f"{registration.alias}@{registration.wallet_hash}",
+            "registry": SERVER_INSTANCE
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/registry/wallet/{wallet_hash}")
+async def resolve_wallet(wallet_hash: str):
+    """Resolve a wallet address to its details."""
+    try:
+        from redis_accounts import get_redis
+        r = get_redis()
+
+        wallet_data = r.hgetall(f"{WALLET_PREFIX}{wallet_hash}")
+
+        if not wallet_data:
+            # Try to find by alias
+            for wh in r.smembers("federation:wallets"):
+                data = r.hgetall(f"{WALLET_PREFIX}{wh}")
+                if data.get("alias") == wallet_hash:
+                    wallet_data = data
+                    wallet_hash = wh
+                    break
+
+        if not wallet_data:
+            raise HTTPException(status_code=404, detail=f"Wallet not found: {wallet_hash}")
+
+        return {
+            "ok": True,
+            "resolved": True,
+            **wallet_data,
+            "address": f"{wallet_data.get('alias', 'unknown')}@{wallet_hash}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/stones/publish")
+async def publish_stone(data: StonePublish):
+    """Publish a stone to the registry."""
+    try:
+        from redis_accounts import get_redis
+        r = get_redis()
+
+        stone = data.stone
+        author = stone.get("border", {}).get("author", "")
+        stone_hash = stone.get("border", {}).get("hash", "")
+
+        if "@" in author:
+            wallet_hash = author.split("@")[1]
+        else:
+            raise HTTPException(status_code=400, detail="Invalid author format")
+
+        stone_id = f"{stone.get('type', 'unknown')}_{stone_hash}"
+
+        r.hset(f"{STONES_PREFIX}{wallet_hash}:{stone_id}", mapping={
+            "stone_id": stone_id,
+            "hash": stone_hash,
+            "type": stone.get("type", "unknown"),
+            "glow": stone.get("border", {}).get("glow", ""),
+            "author": author,
+            "created": stone.get("border", {}).get("created", ""),
+            "lod5": stone.get("layers", {}).get("lod5", {}).get("content", "")[:200],
+            "stone_json": json.dumps(stone)
+        })
+
+        r.sadd(f"{STONES_PREFIX}{wallet_hash}:index", stone_id)
+
+        return {
+            "ok": True,
+            "published": stone_id,
+            "hash": stone_hash,
+            "author": author,
+            "registry": SERVER_INSTANCE
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/stones/{wallet_hash}")
+async def fetch_stones(wallet_hash: str, lod: int = 5):
+    """Fetch stones from a wallet."""
+    try:
+        from redis_accounts import get_redis
+        r = get_redis()
+
+        stone_ids = r.smembers(f"{STONES_PREFIX}{wallet_hash}:index")
+
+        stones = []
+        for stone_id in stone_ids:
+            stone_data = r.hgetall(f"{STONES_PREFIX}{wallet_hash}:{stone_id}")
+            if stone_data:
+                if lod == 5:
+                    stones.append({
+                        "stone_id": stone_data.get("stone_id"),
+                        "hash": stone_data.get("hash"),
+                        "type": stone_data.get("type"),
+                        "glow": stone_data.get("glow"),
+                        "lod5": stone_data.get("lod5")
+                    })
+                else:
+                    full_stone = json.loads(stone_data.get("stone_json", "{}"))
+                    stones.append(full_stone)
+
+        return {
+            "ok": True,
+            "wallet_hash": wallet_hash,
+            "stones": stones,
+            "count": len(stones),
+            "lod": lod
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v1/inbox/{wallet_hash}")
+async def send_to_inbox(wallet_hash: str, data: InboxMessage):
+    """Send a stone to a wallet's inbox."""
+    try:
+        from redis_accounts import get_redis
+        r = get_redis()
+
+        envelope = data.envelope
+        message_id = f"msg_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{envelope.get('stone_hash', 'unknown')[:8]}"
+
+        r.hset(f"{INBOX_PREFIX}{wallet_hash}:{message_id}", mapping={
+            "message_id": message_id,
+            "from": envelope.get("from", "unknown"),
+            "to": envelope.get("to", wallet_hash),
+            "sent": envelope.get("sent", datetime.now(timezone.utc).isoformat()),
+            "stone_hash": envelope.get("stone_hash", ""),
+            "envelope_json": json.dumps(envelope)
+        })
+
+        r.sadd(f"{INBOX_PREFIX}{wallet_hash}:index", message_id)
+
+        return {
+            "ok": True,
+            "delivered": True,
+            "message_id": message_id,
+            "to": wallet_hash
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/inbox/{wallet_hash}")
+async def check_inbox(wallet_hash: str):
+    """Check inbox for a wallet."""
+    try:
+        from redis_accounts import get_redis
+        r = get_redis()
+
+        message_ids = r.smembers(f"{INBOX_PREFIX}{wallet_hash}:index")
+
+        messages = []
+        for msg_id in message_ids:
+            msg_data = r.hgetall(f"{INBOX_PREFIX}{wallet_hash}:{msg_id}")
+            if msg_data:
+                messages.append({
+                    "message_id": msg_data.get("message_id"),
+                    "from": msg_data.get("from"),
+                    "sent": msg_data.get("sent"),
+                    "stone_hash": msg_data.get("stone_hash")
+                })
+
+        messages.sort(key=lambda m: m.get("sent", ""), reverse=True)
+
+        return {
+            "ok": True,
+            "wallet_hash": wallet_hash,
+            "messages": messages,
+            "count": len(messages)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/federation/peers")
+async def list_peers():
+    """List federated registry peers."""
+    try:
+        from redis_accounts import get_redis
+        r = get_redis()
+
+        peers = r.smembers(PEERS_KEY) or set()
+
+        return {
+            "ok": True,
+            "this_registry": SERVER_INSTANCE,
+            "peers": list(peers),
+            "federation_enabled": True
+        }
+    except Exception as e:
+        return {
+            "ok": True,
+            "this_registry": SERVER_INSTANCE,
+            "peers": [],
+            "federation_enabled": False,
+            "note": "Redis not available"
+        }
+
+
+@app.post("/api/v1/federation/join")
+async def join_federation(peer_url: str):
+    """Add a peer to the federation."""
+    try:
+        from redis_accounts import get_redis
+        r = get_redis()
+
+        r.sadd(PEERS_KEY, peer_url)
+
+        return {
+            "ok": True,
+            "joined": peer_url,
+            "registry": SERVER_INSTANCE
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/federation/info")
+async def federation_info():
+    """Get federation API info."""
+    return {
+        "ok": True,
+        "version": "1.0.0",
+        "registry": SERVER_INSTANCE,
+        "endpoints": {
+            "POST /api/v1/registry/wallet": "Register wallet",
+            "GET /api/v1/registry/wallet/{hash}": "Resolve wallet",
+            "POST /api/v1/stones/publish": "Publish stone",
+            "GET /api/v1/stones/{wallet_hash}": "Fetch stones",
+            "POST /api/v1/inbox/{wallet_hash}": "Send to inbox",
+            "GET /api/v1/inbox/{wallet_hash}": "Check inbox",
+            "GET /api/v1/federation/peers": "List peers",
+            "POST /api/v1/federation/join": "Join federation"
+        },
+        "address_format": "alias@wallet_hash",
+        "stone_format": "QA.Stone v1.0 with LOD layers"
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
