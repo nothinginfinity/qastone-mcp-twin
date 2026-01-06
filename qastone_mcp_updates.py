@@ -59,7 +59,6 @@ class MCPStoneUpdate:
     """
     # Stone Identity
     stone_update_id: str          # Unique ID for this update
-    version: str = "2.0.0-mcp"    # Version indicating MCP-native stone
 
     # MCP Message (the actual update)
     mcp_message: Dict             # Full MCP tools/call message
@@ -76,6 +75,9 @@ class MCPStoneUpdate:
     # Metadata
     created_by: str               # User/system that created this
     server_instance: str          # Which MCP server created it
+
+    # Defaults must come last
+    version: str = "2.0.0-mcp"    # Version indicating MCP-native stone
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -212,7 +214,6 @@ def create_mcp_stone_update(
     # Create stone (without signature first)
     stone = MCPStoneUpdate(
         stone_update_id=stone_update_id,
-        version="2.0.0-mcp",
         mcp_message=mcp_message,
         previous_hash=head["hash"],
         sequence_number=head["sequence_number"] + 1,
@@ -220,7 +221,8 @@ def create_mcp_stone_update(
         nonce=nonce,
         signature="",  # Will compute
         created_by=created_by,
-        server_instance=server_instance
+        server_instance=server_instance,
+        version="2.0.0-mcp"
     )
 
     # Compute and set signature
