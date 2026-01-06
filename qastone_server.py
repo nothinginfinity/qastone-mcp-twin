@@ -2627,6 +2627,7 @@ _session_manager = None
 def get_session_manager():
     global _session_manager
     if _session_manager is None and COLLAB_AVAILABLE:
+        from redis_accounts import get_redis
         _session_manager = SessionManager(get_redis())
     return _session_manager
 
