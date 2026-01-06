@@ -799,6 +799,354 @@ async def api_mcp_update_info():
 
 
 # =============================================================================
+# 3-LAYER STONE API (Scalable Architecture)
+# =============================================================================
+
+try:
+    from qastone_3layer import (
+        QAStone3Layer,
+        store_stone_3layer,
+        get_chain_entry,
+        get_manifest,
+        traverse_wormhole,
+        verify_stone_3layer,
+        get_chain_status_3layer,
+        get_recent_stones_3layer,
+        get_sync_payload,
+        apply_sync_payload,
+        create_3layer_transfer,
+        create_3layer_message,
+        Wormhole,
+    )
+    LAYER3_AVAILABLE = True
+except ImportError:
+    LAYER3_AVAILABLE = False
+
+
+@app.get("/api/v3/status")
+async def api_v3_status():
+    """Get 3-layer chain status."""
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    status = get_chain_status_3layer()
+    status["server_instance"] = SERVER_INSTANCE
+    return status
+
+
+@app.get("/api/v3/chain/recent")
+async def api_v3_chain_recent(limit: int = 10):
+    """Get recent stones from 3-layer chain."""
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    return {
+        "stones": get_recent_stones_3layer(limit),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/v3/stone/{stone_id}")
+async def api_v3_get_stone(stone_id: str, layer: int = 1):
+    """
+    Get stone data by layer.
+
+    - layer=0: Chain entry only (~500 bytes)
+    - layer=1: Full manifest (~5KB)
+    """
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    if layer == 0:
+        entry = get_chain_entry(stone_id)
+        if not entry:
+            return {"error": "Stone not found"}
+        return {
+            "layer": 0,
+            "data": entry.to_dict(),
+            "server_instance": SERVER_INSTANCE
+        }
+    else:
+        manifest = get_manifest(stone_id)
+        if not manifest:
+            return {"error": "Manifest not found"}
+        return {
+            "layer": 1,
+            "data": manifest.to_dict(),
+            "server_instance": SERVER_INSTANCE
+        }
+
+
+@app.get("/api/v3/stone/{stone_id}/wormhole/{layer_num}")
+async def api_v3_traverse_wormhole(stone_id: str, layer_num: int):
+    """
+    Traverse a wormhole to retrieve content from Layer 2+.
+
+    Returns the content with verification.
+    """
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    manifest = get_manifest(stone_id)
+    if not manifest:
+        return {"error": "Manifest not found"}
+
+    # Find wormhole for this layer
+    wormhole = None
+    for wh in manifest.wormholes:
+        if wh.layer == layer_num:
+            wormhole = wh
+            break
+
+    if not wormhole:
+        return {"error": f"No wormhole for layer {layer_num}"}
+
+    try:
+        content = traverse_wormhole(wormhole)
+
+        # Try to decode as text if it's a message
+        if wormhole.content_type == "message":
+            try:
+                content_str = content.decode('utf-8')
+                return {
+                    "layer": layer_num,
+                    "content_type": wormhole.content_type,
+                    "content": content_str,
+                    "size_bytes": len(content),
+                    "verified": True,
+                    "server_instance": SERVER_INSTANCE
+                }
+            except UnicodeDecodeError:
+                pass
+
+        # Return as base64 for binary content
+        import base64
+        return {
+            "layer": layer_num,
+            "content_type": wormhole.content_type,
+            "content_base64": base64.b64encode(content).decode('ascii'),
+            "size_bytes": len(content),
+            "verified": True,
+            "server_instance": SERVER_INSTANCE
+        }
+
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/v3/verify/{stone_id}")
+async def api_v3_verify_stone(stone_id: str, full: bool = False):
+    """
+    Verify a 3-layer stone.
+
+    - full=False: Only verify border hash (fast)
+    - full=True: Verify all content layer hashes (slower)
+    """
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    result = verify_stone_3layer(stone_id, full_verification=full)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.post("/api/v3/message")
+async def api_v3_send_message(
+    from_token: str,
+    to_username: str,
+    message: str,
+    attachment_url: Optional[str] = None
+):
+    """
+    Send a message as a 3-layer QA.Stone.
+
+    This creates a cryptographically signed message with:
+    - Layer 0: Chain entry (for ordering)
+    - Layer 1: Manifest (metadata + wormholes)
+    - Layer 2: Message content
+    - Layer 3+: Attachments (if any)
+    """
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    # Authenticate
+    from_user_id = authenticate(from_token)
+    if not from_user_id:
+        return {"error": "Invalid token"}
+
+    to_user_id = generate_user_id(to_username)
+
+    # Create 3-layer message
+    stone = create_3layer_message(
+        from_user=from_user_id,
+        to_user=to_user_id,
+        message=message,
+        server_instance=SERVER_INSTANCE
+    )
+
+    # Store it
+    result = store_stone_3layer(stone)
+
+    if result["success"]:
+        # Notify recipient via WebSocket
+        await ws_manager.notify_user(to_user_id, {
+            "type": "v3_message_received",
+            "stone_id": stone.stone_id,
+            "border_hash": stone.border_hash[:16] + "...",
+            "from": from_user_id,
+            "glow_channel": "message",
+            "message": f"New message from {from_user_id}"
+        })
+
+        result["stone"] = {
+            "stone_id": stone.stone_id,
+            "border_hash": stone.border_hash,
+            "sequence": stone.chain_entry.sequence,
+            "layers": len(stone.manifest.wormholes) + 2
+        }
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.post("/api/v3/transfer")
+async def api_v3_transfer(
+    from_token: str,
+    to_username: str,
+    stone_id: str,
+    message: Optional[str] = None
+):
+    """
+    Transfer a stone with optional message using 3-layer architecture.
+    """
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    # Authenticate
+    from_user_id = authenticate(from_token)
+    if not from_user_id:
+        return {"error": "Invalid token"}
+
+    to_user_id = generate_user_id(to_username)
+
+    # Create 3-layer transfer
+    transfer_stone = create_3layer_transfer(
+        from_user=from_user_id,
+        to_user=to_user_id,
+        stone_id=stone_id,
+        message=message,
+        server_instance=SERVER_INSTANCE
+    )
+
+    # Store it
+    result = store_stone_3layer(transfer_stone)
+
+    if result["success"]:
+        # Notify recipient
+        await ws_manager.notify_user(to_user_id, {
+            "type": "v3_transfer_received",
+            "transfer_stone_id": transfer_stone.stone_id,
+            "original_stone_id": stone_id,
+            "border_hash": transfer_stone.border_hash[:16] + "...",
+            "from": from_user_id,
+            "has_message": message is not None,
+            "message": f"Stone transfer from {from_user_id}"
+        })
+
+        result["transfer"] = {
+            "transfer_stone_id": transfer_stone.stone_id,
+            "original_stone_id": stone_id,
+            "border_hash": transfer_stone.border_hash,
+            "sequence": transfer_stone.chain_entry.sequence
+        }
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/v3/sync/{stone_id}")
+async def api_v3_get_sync_payload(stone_id: str):
+    """
+    Get sync payload for twin synchronization.
+
+    This returns the minimal data needed for another twin
+    to register this stone in its chain.
+    """
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    payload = get_sync_payload(stone_id)
+    if not payload:
+        return {"error": "Stone not found"}
+
+    payload["source_instance"] = SERVER_INSTANCE
+    return payload
+
+
+@app.post("/api/v3/sync")
+async def api_v3_apply_sync(payload: Dict[str, Any]):
+    """
+    Apply sync payload from another twin.
+
+    This registers a stone in the local chain without
+    having the full manifest (lazy loading).
+    """
+    if not LAYER3_AVAILABLE:
+        return {"error": "3-layer module not available"}
+
+    result = apply_sync_payload(payload)
+    result["applied_by"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/v3/info")
+async def api_v3_info():
+    """Information about the 3-layer QA.Stone architecture."""
+    return {
+        "version": "3.0.0",
+        "architecture": "3-layer",
+        "available": LAYER3_AVAILABLE,
+        "description": "QA.Stone 3D Cantor Lattice with Stochastic Wormholes",
+        "layers": {
+            "0": {
+                "name": "Chain",
+                "storage": "Redis",
+                "size": "~500 bytes/stone",
+                "purpose": "Global ordering, twin sync"
+            },
+            "1": {
+                "name": "Manifest",
+                "storage": "Redis",
+                "size": "~2-10KB/stone",
+                "purpose": "Metadata, MCP message, wormhole addresses"
+            },
+            "2+": {
+                "name": "Content",
+                "storage": "Local/S3/IPFS",
+                "size": "Unlimited",
+                "purpose": "Message text, images, videos, websites"
+            }
+        },
+        "scaling": {
+            "chain": "1M stones = ~500MB Redis",
+            "manifests": "1M stones = ~5GB",
+            "content": "CDN-cacheable, unlimited"
+        },
+        "endpoints": {
+            "GET /api/v3/status": "Chain status",
+            "GET /api/v3/stone/{id}": "Get stone by layer",
+            "GET /api/v3/stone/{id}/wormhole/{layer}": "Traverse wormhole",
+            "POST /api/v3/message": "Send message",
+            "POST /api/v3/transfer": "Transfer stone",
+            "POST /api/v3/verify/{id}": "Verify stone",
+            "GET /api/v3/sync/{id}": "Get sync payload",
+            "POST /api/v3/sync": "Apply sync payload"
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
