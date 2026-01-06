@@ -25,6 +25,7 @@ MCP Tools:
 import os
 import json
 import logging
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -1467,6 +1468,357 @@ async def api_stream_system_info():
             "GET /api/stream/{id}": "Stream info",
             "GET /api/stream/{id}/manifest": "HLS-style manifest",
             "GET /api/stream/{id}/chunk/{seq}": "Get chunk data"
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
+# CONTEXT MANAGEMENT API (LLM Context with V4 Compression)
+# =============================================================================
+
+try:
+    from qastone_context import (
+        QAStoneContext,
+        ContextChain,
+        compress_for_llm,
+        decompress_v4,
+        embed_text,
+        semantic_similarity,
+        extract_concepts,
+        find_stones_by_concept,
+    )
+    CONTEXT_AVAILABLE = True
+except ImportError:
+    CONTEXT_AVAILABLE = False
+
+
+@app.post("/api/context/compress")
+async def api_context_compress(text: str, detail: str = "compressed"):
+    """
+    Compress text for LLM context injection.
+
+    Args:
+        text: Text to compress
+        detail: "full", "compressed", "concepts"
+
+    Returns V4 compressed version with token estimates.
+    """
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    stone = QAStoneContext.create(content=text)
+
+    return {
+        "original_tokens": stone.token_estimate["full"],
+        "compressed_tokens": stone.token_estimate["v4_compressed"],
+        "savings_percent": round((1 - stone.compression_ratio) * 100, 1),
+        "detail": detail,
+        "content": stone.get_for_llm(detail),
+        "concepts": stone.layers.concepts[:10],
+        "border_hash": stone.border_hash[:16] + "...",
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/context/decompress")
+async def api_context_decompress(v4_text: str):
+    """Decompress V4 format back to readable text."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    decompressed = decompress_v4(v4_text)
+    return {
+        "original": v4_text,
+        "decompressed": decompressed,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/context/embed")
+async def api_context_embed(text: str):
+    """Get embedding vector for text (for semantic search)."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    embedding = embed_text(text)
+    return {
+        "text_preview": text[:100] + "..." if len(text) > 100 else text,
+        "embedding_dim": len(embedding),
+        "embedding": embedding[:10],  # First 10 dims for preview
+        "embedding_hash": hashlib.sha256(str(embedding).encode()).hexdigest()[:16],
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/context/similarity")
+async def api_context_similarity(text1: str, text2: str):
+    """Compute semantic similarity between two texts."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    similarity = semantic_similarity(text1, text2)
+    return {
+        "text1_preview": text1[:50] + "..." if len(text1) > 50 else text1,
+        "text2_preview": text2[:50] + "..." if len(text2) > 50 else text2,
+        "similarity": round(similarity, 4),
+        "interpretation": (
+            "very similar" if similarity > 0.8 else
+            "similar" if similarity > 0.6 else
+            "somewhat related" if similarity > 0.4 else
+            "weakly related" if similarity > 0.2 else
+            "unrelated"
+        ),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/context/concepts")
+async def api_context_extract_concepts(text: str, max_concepts: int = 20):
+    """Extract key concepts from text."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    concepts = extract_concepts(text, max_concepts)
+    return {
+        "text_preview": text[:100] + "..." if len(text) > 100 else text,
+        "concepts": concepts,
+        "count": len(concepts),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/context/chain/create")
+async def api_context_chain_create(session_id: Optional[str] = None):
+    """Create a new context chain for conversation management."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    chain = ContextChain.create(session_id=session_id)
+    return {
+        "success": True,
+        "chain_id": chain.chain_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/context/chain/{chain_id}/turn")
+async def api_context_chain_add_turn(
+    chain_id: str,
+    role: str,
+    content: str
+):
+    """
+    Add a conversation turn to the chain.
+
+    Args:
+        chain_id: Chain to add to
+        role: "user", "assistant", "system"
+        content: Turn content
+    """
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    chain = ContextChain.load(chain_id)
+    if not chain:
+        # Create new chain if doesn't exist
+        chain = ContextChain.create(session_id=chain_id)
+
+    stone = chain.add_turn(role=role, content=content)
+
+    return {
+        "success": True,
+        "context_id": stone.context_id,
+        "sequence": stone.sequence,
+        "tokens_full": stone.token_estimate["full"],
+        "tokens_v4": stone.token_estimate["v4_compressed"],
+        "compression_ratio": round(stone.compression_ratio, 3),
+        "concepts": stone.layers.concepts[:5],
+        "border_hash": stone.border_hash[:16] + "...",
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/context/chain/{chain_id}")
+async def api_context_chain_get(chain_id: str):
+    """Get chain information and statistics."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    chain = ContextChain.load(chain_id)
+    if not chain:
+        return {"error": "Chain not found"}
+
+    stats = chain.get_stats()
+    integrity = chain.verify_integrity()
+
+    return {
+        "chain_id": chain.chain_id,
+        "turns": len(chain.stones),
+        "stats": stats,
+        "integrity": integrity,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/context/chain/{chain_id}/retrieve")
+async def api_context_chain_retrieve(
+    chain_id: str,
+    query: str,
+    max_tokens: int = 4000,
+    detail: str = "compressed"
+):
+    """
+    Retrieve relevant context from chain within token budget.
+
+    Uses semantic similarity + recency to select turns.
+
+    Args:
+        chain_id: Chain to search
+        query: Query to find relevant context for
+        max_tokens: Maximum tokens to return
+        detail: "full", "compressed", "concepts"
+    """
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    chain = ContextChain.load(chain_id)
+    if not chain:
+        return {"error": "Chain not found"}
+
+    context = chain.get_relevant_context(
+        query=query,
+        max_tokens=max_tokens,
+        detail=detail
+    )
+
+    # Estimate actual tokens returned
+    actual_tokens = len(context) // 4
+
+    return {
+        "chain_id": chain_id,
+        "query": query[:50] + "..." if len(query) > 50 else query,
+        "max_tokens": max_tokens,
+        "actual_tokens": actual_tokens,
+        "detail": detail,
+        "context": context,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/context/chain/{chain_id}/summary")
+async def api_context_chain_summary(chain_id: str):
+    """Get V4 compressed summary of entire chain."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    chain = ContextChain.load(chain_id)
+    if not chain:
+        return {"error": "Chain not found"}
+
+    summary = chain.to_v4_summary()
+    stats = chain.get_stats()
+
+    return {
+        "chain_id": chain_id,
+        "turns": len(chain.stones),
+        "full_tokens": stats["total_tokens_full"],
+        "summary_tokens": len(summary) // 4,
+        "compression": f"{round((1 - len(summary) / max(1, stats['total_tokens_full'] * 4)) * 100, 1)}%",
+        "summary": summary,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/context/chain/{chain_id}/turn/{sequence}")
+async def api_context_chain_get_turn(
+    chain_id: str,
+    sequence: int,
+    detail: str = "compressed"
+):
+    """Get a specific turn from the chain."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    chain = ContextChain.load(chain_id)
+    if not chain:
+        return {"error": "Chain not found"}
+
+    stone = chain.get_turn(sequence)
+    if not stone:
+        return {"error": f"Turn {sequence} not found"}
+
+    return {
+        "chain_id": chain_id,
+        "context_id": stone.context_id,
+        "sequence": stone.sequence,
+        "role": stone.role,
+        "content": stone.get_for_llm(detail),
+        "tokens": stone.token_estimate.get(
+            "v4_compressed" if detail == "compressed" else "full",
+            stone.token_estimate["full"]
+        ),
+        "concepts": stone.layers.concepts,
+        "border_hash": stone.border_hash[:16] + "...",
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/context/search")
+async def api_context_search_by_concept(concept: str):
+    """Find context stones containing a specific concept."""
+    if not CONTEXT_AVAILABLE:
+        return {"error": "Context module not available"}
+
+    stone_refs = find_stones_by_concept(concept)
+
+    return {
+        "concept": concept,
+        "matches": len(stone_refs),
+        "stone_refs": list(stone_refs)[:50],  # Limit to 50
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/context/info")
+async def api_context_info():
+    """Information about the context management system."""
+    return {
+        "version": "1.0.0",
+        "available": CONTEXT_AVAILABLE,
+        "description": "QA.Stone Context Management with V4 Compression",
+        "layers": {
+            "2": {"name": "Full", "description": "Original text, full fidelity"},
+            "3": {"name": "V4 Compressed", "description": "~85% token reduction"},
+            "4": {"name": "Embedding", "description": "384-dim vector for semantic search"},
+            "5": {"name": "Concepts", "description": "Key terms only, ~98% reduction"}
+        },
+        "token_savings": {
+            "v4_compression": "~85%",
+            "with_relevance_filter": "~95%",
+            "concepts_only": "~98%"
+        },
+        "features": [
+            "Multi-layer compression (full → V4 → concepts)",
+            "Semantic similarity search",
+            "Concept-based retrieval",
+            "Token budget management",
+            "Chain integrity verification",
+            "Conversation history as verifiable chain"
+        ],
+        "endpoints": {
+            "POST /api/context/compress": "Compress text for LLM",
+            "POST /api/context/decompress": "Decompress V4 format",
+            "POST /api/context/embed": "Get embedding vector",
+            "POST /api/context/similarity": "Compute semantic similarity",
+            "POST /api/context/concepts": "Extract key concepts",
+            "POST /api/context/chain/create": "Create conversation chain",
+            "POST /api/context/chain/{id}/turn": "Add turn to chain",
+            "GET /api/context/chain/{id}": "Get chain info",
+            "POST /api/context/chain/{id}/retrieve": "Get relevant context",
+            "GET /api/context/chain/{id}/summary": "V4 summary of chain",
+            "GET /api/context/search": "Search by concept"
         },
         "server_instance": SERVER_INSTANCE
     }
