@@ -3425,6 +3425,51 @@ async def api_get_accessible_pools(user_token: str):
     }
 
 
+# --- Pool Stats & Info (MUST be before {pool_id} wildcard) ---
+
+@app.get("/api/pools/stats")
+async def api_pool_stats():
+    """Get marketplace stats."""
+    stats = get_pool_stats()
+    stats["server_instance"] = SERVER_INSTANCE
+    stats["type_icons"] = {k.value: v for k, v in POOL_TYPE_ICONS.items()}
+    stats["pricing_icons"] = {k.value: v for k, v in PRICING_ICONS.items()}
+    return stats
+
+
+@app.get("/api/pools/types")
+async def api_pool_types():
+    """Get available pool types and pricing models."""
+    return {
+        "pool_types": [
+            {"value": t.value, "label": t.value.capitalize(), "icon": POOL_TYPE_ICONS[t]}
+            for t in PoolType
+        ],
+        "pricing_models": [
+            {"value": p.value, "label": p.value.capitalize(), "icon": PRICING_ICONS[p]}
+            for p in PricingModel
+        ],
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/pools/info")
+async def api_pools_info():
+    """Information about the data pools system."""
+    return {
+        "version": "1.0.0",
+        "description": "Data Pools Marketplace - Share, sell, rent, or trade your data",
+        "features": {
+            "pool_types": "text, code, media, location, behavioral, exhaust, mixed",
+            "pricing": "free, buy, rent, trade, stake",
+            "bridging": "Connect pools across users for federation",
+            "storage": "Railway/Redis (P2P coming soon)",
+            "payments": "Mock demo (Stripe/crypto plugin-ready)",
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
 @app.get("/api/pools/{pool_id}")
 async def api_get_pool(pool_id: str, user_token: Optional[str] = None):
     """Get pool details."""
@@ -3601,72 +3646,6 @@ async def api_get_pending_bridges(user_token: str):
         "success": True,
         "bridges": bridges,
         "count": len(bridges),
-        "server_instance": SERVER_INSTANCE
-    }
-
-
-# --- Pool Stats & Info ---
-
-@app.get("/api/pools/stats")
-async def api_pool_stats():
-    """Get marketplace stats."""
-    stats = get_pool_stats()
-    stats["server_instance"] = SERVER_INSTANCE
-
-    # Add type icons
-    stats["type_icons"] = {k.value: v for k, v in POOL_TYPE_ICONS.items()}
-    stats["pricing_icons"] = {k.value: v for k, v in PRICING_ICONS.items()}
-
-    return stats
-
-
-@app.get("/api/pools/types")
-async def api_pool_types():
-    """Get available pool types and pricing models."""
-    return {
-        "pool_types": [
-            {"value": t.value, "label": t.value.capitalize(), "icon": POOL_TYPE_ICONS[t]}
-            for t in PoolType
-        ],
-        "pricing_models": [
-            {"value": p.value, "label": p.value.capitalize(), "icon": PRICING_ICONS[p]}
-            for p in PricingModel
-        ],
-        "server_instance": SERVER_INSTANCE
-    }
-
-
-@app.get("/api/pools/info")
-async def api_pools_info():
-    """Information about the data pools system."""
-    return {
-        "version": "1.0.0",
-        "description": "Data Pools Marketplace - Share, sell, rent, or trade your data",
-        "features": {
-            "pool_types": "text, code, media, location, behavioral, exhaust, mixed",
-            "pricing": "free, buy, rent, trade, stake",
-            "bridging": "Connect pools across users for federation",
-            "storage": "Railway/Redis (P2P coming soon)",
-            "payments": "Mock demo (Stripe/crypto plugin-ready)",
-        },
-        "use_cases": [
-            "Train local models with diverse data",
-            "Test software with real-world datasets",
-            "Monetize your digital exhaust (spam, deleted files)",
-            "Share knowledge bases and research data",
-            "Trade data between researchers/developers",
-        ],
-        "endpoints": {
-            "POST /api/pools/create": "Create new pool",
-            "GET /api/pools/browse": "Browse marketplace",
-            "GET /api/pools/search?query=": "Search pools",
-            "GET /api/pools/my-pools": "Get your pools",
-            "GET /api/pools/{id}": "Get pool details",
-            "POST /api/pools/{id}/acquire": "Acquire access",
-            "POST /api/pools/{id}/rate": "Rate pool",
-            "POST /api/pools/bridge/create": "Create bridge",
-            "GET /api/pools/stats": "Marketplace stats",
-        },
         "server_instance": SERVER_INSTANCE
     }
 
