@@ -56,6 +56,29 @@ from redis_accounts import (
     get_redis,
 )
 from qastone_mint import mint_offer
+from redis_datapools import (
+    create_pool,
+    get_pool,
+    update_pool,
+    delete_pool,
+    list_public_pools,
+    search_pools,
+    get_user_pools,
+    get_accessible_pools,
+    acquire_pool,
+    check_pool_access,
+    create_bridge,
+    accept_bridge,
+    get_pool_bridges,
+    get_pending_bridges,
+    rate_pool,
+    get_pool_stats,
+    get_user_pool_stats,
+    PoolType,
+    PricingModel,
+    POOL_TYPE_ICONS,
+    PRICING_ICONS,
+)
 from qastone_mcp_updates import (
     transfer_as_mcp_update,
     get_chain_status,
@@ -3260,6 +3283,627 @@ async def collab_info():
             "POST /api/debate/llm-advocate": "LLM argues for team",
             "POST /api/debate/judge": "Score argument",
         },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
+# DATA POOLS API - Marketplace for User Data
+# =============================================================================
+
+@app.post("/api/pools/create")
+async def api_create_pool(
+    user_token: str,
+    name: str,
+    pool_type: str,
+    visibility: str = "public",
+    description: str = "",
+    tags: str = "",  # comma-separated
+    pricing_model: str = "free",
+    price_cents: int = 0
+):
+    """Create a new data pool."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    # Build pricing
+    pricing = {
+        "model": pricing_model,
+        "price_cents": price_cents,
+        "rent_duration_days": 30,
+        "currency": "USD"
+    }
+
+    # Build metadata
+    metadata = {
+        "description": description,
+        "tags": [t.strip() for t in tags.split(",") if t.strip()],
+        "size_bytes": 0,
+        "file_count": 0,
+        "format": "mixed",
+        "quality_score": 0.0
+    }
+
+    result = create_pool(
+        owner_id=user_id,
+        name=name,
+        pool_type=pool_type,
+        visibility=visibility,
+        pricing=pricing,
+        metadata=metadata
+    )
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/pools/browse")
+async def api_browse_pools(
+    pool_type: Optional[str] = None,
+    sort_by: str = "recent",
+    limit: int = 50,
+    offset: int = 0
+):
+    """Browse public data pools in marketplace."""
+    pools = list_public_pools(
+        pool_type=pool_type,
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by
+    )
+
+    # Add icons for UI
+    for pool in pools:
+        pool["type_icon"] = POOL_TYPE_ICONS.get(pool.get("pool_type"), "📦")
+        pricing = pool.get("pricing", {})
+        pool["pricing_icon"] = PRICING_ICONS.get(pricing.get("model"), "🆓")
+
+    return {
+        "success": True,
+        "pools": pools,
+        "count": len(pools),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/pools/search")
+async def api_search_pools(query: str, limit: int = 20):
+    """Search pools by name/description/tags."""
+    pools = search_pools(query, limit)
+
+    for pool in pools:
+        pool["type_icon"] = POOL_TYPE_ICONS.get(pool.get("pool_type"), "📦")
+
+    return {
+        "success": True,
+        "pools": pools,
+        "count": len(pools),
+        "query": query,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/pools/my-pools")
+async def api_get_my_pools(user_token: str):
+    """Get pools owned by current user."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token", "pools": []}
+
+    pools = get_user_pools(user_id)
+    stats = get_user_pool_stats(user_id)
+
+    for pool in pools:
+        pool["type_icon"] = POOL_TYPE_ICONS.get(pool.get("pool_type"), "📦")
+
+    return {
+        "success": True,
+        "pools": pools,
+        "stats": stats,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/pools/accessible")
+async def api_get_accessible_pools(user_token: str):
+    """Get all pools user has access to (owned + acquired)."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token", "pools": []}
+
+    pools = get_accessible_pools(user_id)
+
+    for pool in pools:
+        pool["type_icon"] = POOL_TYPE_ICONS.get(pool.get("pool_type"), "📦")
+
+    return {
+        "success": True,
+        "pools": pools,
+        "count": len(pools),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/pools/{pool_id}")
+async def api_get_pool(pool_id: str, user_token: Optional[str] = None):
+    """Get pool details."""
+    pool = get_pool(pool_id)
+    if not pool:
+        return {"success": False, "error": "Pool not found"}
+
+    pool_dict = pool.to_dict()
+    pool_dict["type_icon"] = POOL_TYPE_ICONS.get(pool.pool_type, "📦")
+    pool_dict["average_rating"] = pool.average_rating
+
+    # Check if user has access
+    if user_token:
+        user_id = authenticate(user_token)
+        if user_id:
+            access = check_pool_access(pool_id, user_id)
+            pool_dict["user_access"] = access
+
+    return {
+        "success": True,
+        "pool": pool_dict,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/pools/{pool_id}/acquire")
+async def api_acquire_pool(pool_id: str, user_token: str, payment_method: str = "mock"):
+    """Acquire access to a pool (mock payment)."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = acquire_pool(pool_id, user_id, payment_method)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.post("/api/pools/{pool_id}/rate")
+async def api_rate_pool(pool_id: str, user_token: str, rating: float):
+    """Rate a pool (1-5 stars)."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = rate_pool(pool_id, user_id, rating)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.put("/api/pools/{pool_id}")
+async def api_update_pool(
+    pool_id: str,
+    user_token: str,
+    name: Optional[str] = None,
+    visibility: Optional[str] = None,
+    description: Optional[str] = None,
+    tags: Optional[str] = None,
+    pricing_model: Optional[str] = None,
+    price_cents: Optional[int] = None
+):
+    """Update pool (owner only)."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    pool = get_pool(pool_id)
+    if not pool:
+        return {"success": False, "error": "Pool not found"}
+    if pool.owner_id != user_id:
+        return {"success": False, "error": "Only owner can update"}
+
+    updates = {}
+    if name:
+        updates["name"] = name
+    if visibility:
+        updates["visibility"] = visibility
+
+    # Update metadata
+    if description or tags:
+        metadata = pool.metadata.copy() if isinstance(pool.metadata, dict) else {}
+        if description:
+            metadata["description"] = description
+        if tags:
+            metadata["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
+        updates["metadata"] = metadata
+
+    # Update pricing
+    if pricing_model or price_cents is not None:
+        pricing = pool.pricing.copy() if isinstance(pool.pricing, dict) else {}
+        if pricing_model:
+            pricing["model"] = pricing_model
+        if price_cents is not None:
+            pricing["price_cents"] = price_cents
+        updates["pricing"] = pricing
+
+    result = update_pool(pool_id, updates)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.delete("/api/pools/{pool_id}")
+async def api_delete_pool(pool_id: str, user_token: str):
+    """Delete a pool (owner only)."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = delete_pool(pool_id, user_id)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+# --- Pool Bridges ---
+
+@app.post("/api/pools/bridge/create")
+async def api_create_bridge(
+    source_pool_id: str,
+    target_pool_id: str,
+    user_token: str,
+    access_type: str = "read"
+):
+    """Request a bridge between two pools."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = create_bridge(
+        source_pool_id=source_pool_id,
+        target_pool_id=target_pool_id,
+        requester_id=user_id,
+        access_type=access_type
+    )
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.post("/api/pools/bridge/{bridge_id}/accept")
+async def api_accept_bridge(bridge_id: str, user_token: str):
+    """Accept a pending bridge request."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = accept_bridge(bridge_id, user_id)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/pools/{pool_id}/bridges")
+async def api_get_pool_bridges(pool_id: str, user_token: str):
+    """Get all bridges for a pool."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    bridges = get_pool_bridges(pool_id)
+    return {
+        "success": True,
+        "bridges": bridges,
+        "count": len(bridges),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/pools/bridges/pending")
+async def api_get_pending_bridges(user_token: str):
+    """Get bridges pending user approval."""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    bridges = get_pending_bridges(user_id)
+    return {
+        "success": True,
+        "bridges": bridges,
+        "count": len(bridges),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# --- Pool Stats & Info ---
+
+@app.get("/api/pools/stats")
+async def api_pool_stats():
+    """Get marketplace stats."""
+    stats = get_pool_stats()
+    stats["server_instance"] = SERVER_INSTANCE
+
+    # Add type icons
+    stats["type_icons"] = {k.value: v for k, v in POOL_TYPE_ICONS.items()}
+    stats["pricing_icons"] = {k.value: v for k, v in PRICING_ICONS.items()}
+
+    return stats
+
+
+@app.get("/api/pools/types")
+async def api_pool_types():
+    """Get available pool types and pricing models."""
+    return {
+        "pool_types": [
+            {"value": t.value, "label": t.value.capitalize(), "icon": POOL_TYPE_ICONS[t]}
+            for t in PoolType
+        ],
+        "pricing_models": [
+            {"value": p.value, "label": p.value.capitalize(), "icon": PRICING_ICONS[p]}
+            for p in PricingModel
+        ],
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/pools/info")
+async def api_pools_info():
+    """Information about the data pools system."""
+    return {
+        "version": "1.0.0",
+        "description": "Data Pools Marketplace - Share, sell, rent, or trade your data",
+        "features": {
+            "pool_types": "text, code, media, location, behavioral, exhaust, mixed",
+            "pricing": "free, buy, rent, trade, stake",
+            "bridging": "Connect pools across users for federation",
+            "storage": "Railway/Redis (P2P coming soon)",
+            "payments": "Mock demo (Stripe/crypto plugin-ready)",
+        },
+        "use_cases": [
+            "Train local models with diverse data",
+            "Test software with real-world datasets",
+            "Monetize your digital exhaust (spam, deleted files)",
+            "Share knowledge bases and research data",
+            "Trade data between researchers/developers",
+        ],
+        "endpoints": {
+            "POST /api/pools/create": "Create new pool",
+            "GET /api/pools/browse": "Browse marketplace",
+            "GET /api/pools/search?query=": "Search pools",
+            "GET /api/pools/my-pools": "Get your pools",
+            "GET /api/pools/{id}": "Get pool details",
+            "POST /api/pools/{id}/acquire": "Acquire access",
+            "POST /api/pools/{id}/rate": "Rate pool",
+            "POST /api/pools/bridge/create": "Create bridge",
+            "GET /api/pools/stats": "Marketplace stats",
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
+# USER DISCOVERY API - Social via Data, Not Followers
+# =============================================================================
+
+@app.get("/api/discover/users")
+async def api_discover_users(limit: int = 20):
+    """
+    Discover users through their data pools.
+    Social connections happen via bridges, not followers.
+    """
+    users = list_users()
+    discovered = []
+
+    for user in users[:limit]:
+        user_id = user["user_id"]
+        pools = get_user_pools(user_id)
+
+        if pools:  # Only show users with public pools
+            # Get pool summary
+            pool_types = list(set(p["pool_type"] for p in pools))
+            total_downloads = sum(p.get("download_count", 0) for p in pools)
+            avg_rating = 0
+            rated_pools = [p for p in pools if p.get("rating_count", 0) > 0]
+            if rated_pools:
+                avg_rating = sum(p["rating_sum"] / p["rating_count"] for p in rated_pools) / len(rated_pools)
+
+            discovered.append({
+                "user_id": user_id,
+                "username": user["username"],
+                "pool_count": len(pools),
+                "pool_types": pool_types,
+                "total_downloads": total_downloads,
+                "avg_rating": round(avg_rating, 1),
+                "top_pools": [
+                    {
+                        "pool_id": p["pool_id"],
+                        "name": p["name"],
+                        "type": p["pool_type"],
+                        "type_icon": POOL_TYPE_ICONS.get(p["pool_type"], "📦"),
+                    }
+                    for p in sorted(pools, key=lambda x: x.get("download_count", 0), reverse=True)[:3]
+                ]
+            })
+
+    # Sort by activity
+    discovered.sort(key=lambda x: x["total_downloads"], reverse=True)
+
+    return {
+        "success": True,
+        "users": discovered,
+        "count": len(discovered),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/discover/user/{username}")
+async def api_get_user_profile(username: str, user_token: Optional[str] = None):
+    """
+    Get a user's public profile through their data pools.
+    """
+    target_user_id = generate_user_id(username)
+    pools = get_user_pools(target_user_id)
+
+    if not pools:
+        return {"success": False, "error": "User not found or has no public pools"}
+
+    # Calculate stats
+    pool_types = {}
+    total_downloads = 0
+    total_size = 0
+
+    for pool in pools:
+        pt = pool["pool_type"]
+        pool_types[pt] = pool_types.get(pt, 0) + 1
+        total_downloads += pool.get("download_count", 0)
+        total_size += pool.get("metadata", {}).get("size_bytes", 0)
+
+    # Check if current user has bridges with this user
+    bridges_with_user = []
+    if user_token:
+        current_user_id = authenticate(user_token)
+        if current_user_id:
+            current_pools = get_user_pools(current_user_id)
+            for cp in current_pools:
+                pool_bridges = get_pool_bridges(cp["pool_id"])
+                for bridge in pool_bridges:
+                    if bridge["target_owner_id"] == target_user_id or bridge["source_owner_id"] == target_user_id:
+                        bridges_with_user.append(bridge)
+
+    return {
+        "success": True,
+        "profile": {
+            "username": username,
+            "user_id": target_user_id,
+            "pool_count": len(pools),
+            "pool_types": pool_types,
+            "total_downloads": total_downloads,
+            "total_size_bytes": total_size,
+            "bridges_with_you": len(bridges_with_user),
+        },
+        "pools": [
+            {
+                "pool_id": p["pool_id"],
+                "name": p["name"],
+                "pool_type": p["pool_type"],
+                "type_icon": POOL_TYPE_ICONS.get(p["pool_type"], "📦"),
+                "description": p.get("metadata", {}).get("description", ""),
+                "downloads": p.get("download_count", 0),
+                "pricing": p.get("pricing", {}),
+            }
+            for p in pools
+        ],
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/discover/suggested-bridges")
+async def api_suggested_bridges(user_token: str):
+    """
+    Get suggested bridges based on complementary data types.
+    """
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token", "suggestions": []}
+
+    my_pools = get_user_pools(user_id)
+    if not my_pools:
+        return {"success": True, "suggestions": [], "message": "Create pools first to get bridge suggestions"}
+
+    # Get my pool types
+    my_types = set(p["pool_type"] for p in my_pools)
+
+    # Find complementary types
+    complementary = {
+        "text": ["code", "behavioral"],
+        "code": ["text", "exhaust"],
+        "media": ["text", "location"],
+        "location": ["behavioral", "media"],
+        "behavioral": ["text", "location"],
+        "exhaust": ["code", "behavioral"],
+        "mixed": ["text", "code", "media"],
+    }
+
+    wanted_types = set()
+    for my_type in my_types:
+        wanted_types.update(complementary.get(my_type, []))
+
+    # Find users with those types
+    all_pools = list_public_pools(limit=100)
+    suggestions = []
+    seen_users = {user_id}
+
+    for pool in all_pools:
+        owner_id = pool["owner_id"]
+        if owner_id in seen_users:
+            continue
+
+        if pool["pool_type"] in wanted_types:
+            seen_users.add(owner_id)
+            owner_name = owner_id.replace("user_", "")
+
+            suggestions.append({
+                "user_id": owner_id,
+                "username": owner_name,
+                "pool_id": pool["pool_id"],
+                "pool_name": pool["name"],
+                "pool_type": pool["pool_type"],
+                "type_icon": pool.get("type_icon", "📦"),
+                "reason": f"Complements your {', '.join(my_types)} data",
+            })
+
+            if len(suggestions) >= 10:
+                break
+
+    return {
+        "success": True,
+        "suggestions": suggestions,
+        "your_types": list(my_types),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/account/create-with-pools")
+async def api_create_account_with_pools(username: str, token: Optional[str] = None):
+    """
+    Create account and auto-seed starter pools.
+    New users get 2-4 random pools to start with.
+    """
+    # Create account
+    result = create_account(username, custom_token=token)
+
+    if not result.get("success"):
+        return result
+
+    user_id = result["user_id"]
+
+    # Seed starter pools
+    try:
+        from seed_datapools import seed_new_user
+        pool_result = seed_new_user(username, verbose=False)
+        result["pools_created"] = pool_result.get("pools_created", 0)
+        result["message"] = f"Account created with {result['pools_created']} starter pools!"
+    except Exception as e:
+        result["pools_created"] = 0
+        result["pool_error"] = str(e)
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/discover/activity")
+async def api_discover_activity(limit: int = 20):
+    """
+    Get recent marketplace activity (new pools, bridges, acquisitions).
+    """
+    # Get recent pools
+    recent_pools = list_public_pools(sort_by="recent", limit=limit)
+
+    activity = []
+    for pool in recent_pools:
+        owner_name = pool["owner_id"].replace("user_", "")
+        activity.append({
+            "type": "new_pool",
+            "icon": pool.get("type_icon", "📦"),
+            "message": f"{owner_name} shared {pool['name']}",
+            "pool_id": pool["pool_id"],
+            "user": owner_name,
+            "timestamp": pool.get("created_at", ""),
+        })
+
+    return {
+        "success": True,
+        "activity": activity[:limit],
         "server_instance": SERVER_INSTANCE
     }
 
