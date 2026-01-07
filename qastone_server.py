@@ -4001,6 +4001,15 @@ async def api_v2_my_pools(user_token: str):
     }
 
 
+# Stats MUST come before {pool_id} wildcard
+@app.get("/api/v2/pools/stats")
+async def api_v2_pool_stats():
+    """Get V2 pool statistics"""
+    stats = get_pool_stats_v2()
+    stats["server_instance"] = SERVER_INSTANCE
+    return stats
+
+
 @app.get("/api/v2/pools/{pool_id}")
 async def api_v2_get_pool(pool_id: str, user_token: Optional[str] = None):
     """Get V2 pool details"""
@@ -4222,14 +4231,6 @@ async def api_v2_revoke_bridge(bridge_id: str, user_token: str):
     result = revoke_bridge(bridge_id, user_id)
     result["server_instance"] = SERVER_INSTANCE
     return result
-
-
-@app.get("/api/v2/pools/stats")
-async def api_v2_pool_stats():
-    """Get V2 pool statistics"""
-    stats = get_pool_stats_v2()
-    stats["server_instance"] = SERVER_INSTANCE
-    return stats
 
 
 # =============================================================================
