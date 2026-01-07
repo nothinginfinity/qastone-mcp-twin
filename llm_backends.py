@@ -396,27 +396,48 @@ class ChatEngine:
         if not self.redis:
             return []
 
-        msg_key = f"chat:messages:{conversation_id}"
-        messages = self.redis.lrange(msg_key, -limit, -1)
+        try:
+            msg_key = f"chat:messages:{conversation_id}"
+            messages = self.redis.lrange(msg_key, -limit, -1)
 
-        return [json.loads(m) for m in messages]
+            result = []
+            for m in messages:
+                # Handle bytes from Redis
+                if isinstance(m, bytes):
+                    m = m.decode('utf-8')
+                result.append(json.loads(m))
+            return result
+        except Exception as e:
+            print(f"[ChatEngine] Error getting conversation history: {e}")
+            return []
 
     async def get_user_conversations(self, user_id: str) -> List[Dict]:
         """Get all conversations for a user"""
         if not self.redis:
             return []
 
-        conv_ids = self.redis.smembers(self.get_user_conversations_key(user_id))
-        conversations = []
+        try:
+            conv_ids = self.redis.smembers(self.get_user_conversations_key(user_id))
+            conversations = []
 
-        for conv_id in conv_ids:
-            conv = self.redis.get(self.get_conversation_key(conv_id))
-            if conv:
-                conversations.append(json.loads(conv))
+            for conv_id in conv_ids:
+                # Handle bytes from Redis (smembers returns bytes)
+                if isinstance(conv_id, bytes):
+                    conv_id = conv_id.decode('utf-8')
 
-        # Sort by last message
-        conversations.sort(key=lambda c: c.get("last_message", ""), reverse=True)
-        return conversations
+                conv = self.redis.get(self.get_conversation_key(conv_id))
+                if conv:
+                    # Handle bytes from Redis get
+                    if isinstance(conv, bytes):
+                        conv = conv.decode('utf-8')
+                    conversations.append(json.loads(conv))
+
+            # Sort by last message
+            conversations.sort(key=lambda c: c.get("last_message", ""), reverse=True)
+            return conversations
+        except Exception as e:
+            print(f"[ChatEngine] Error getting user conversations: {e}")
+            return []
 
 
 # =============================================================================

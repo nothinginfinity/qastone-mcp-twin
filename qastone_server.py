@@ -2523,21 +2523,30 @@ async def get_conversation(conversation_id: str, user_token: str, limit: int = 5
 async def list_conversations(user_token: str):
     """List all conversations for user"""
     if not CHAT_AVAILABLE:
-        return {"error": "Chat module not available"}
+        return {"success": False, "error": "Chat module not available", "conversations": []}
 
     user_id = authenticate(user_token)
     if not user_id:
-        return {"error": "Invalid token"}
+        return {"success": False, "error": "Invalid token", "conversations": []}
 
-    engine = ChatEngine(get_redis())
-    conversations = await engine.get_user_conversations(user_id)
+    try:
+        engine = ChatEngine(get_redis())
+        conversations = await engine.get_user_conversations(user_id)
 
-    return {
-        "success": True,
-        "conversations": conversations,
-        "count": len(conversations),
-        "server_instance": SERVER_INSTANCE
-    }
+        return {
+            "success": True,
+            "conversations": conversations,
+            "count": len(conversations),
+            "server_instance": SERVER_INSTANCE
+        }
+    except Exception as e:
+        print(f"[Chat] Error listing conversations: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "conversations": [],
+            "server_instance": SERVER_INSTANCE
+        }
 
 
 @app.post("/api/chat/welcome")
