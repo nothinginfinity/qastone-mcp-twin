@@ -3888,6 +3888,57 @@ async def api_discover_activity(limit: int = 20):
 
 
 # =============================================================================
+# ADMIN: SEED DEMO DATA
+# =============================================================================
+
+@app.post("/api/admin/seed-pools")
+async def api_seed_demo_pools(admin_key: str = ""):
+    """
+    Seed demo accounts with data pools.
+    Requires admin_key for security.
+    """
+    # Simple security - require key
+    if admin_key != "seed_prax_2026":
+        return {"success": False, "error": "Invalid admin key"}
+
+    try:
+        from seed_datapools import seed_demo_pools
+        results = seed_demo_pools(verbose=False)
+        return {
+            "success": True,
+            "users_seeded": results.get("users_seeded", 0),
+            "pools_created": results.get("pools_created", 0),
+            "bridges_created": results.get("bridges_created", 0),
+            "errors": results.get("errors", [])[:5],
+            "server_instance": SERVER_INSTANCE
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/api/admin/pool-status")
+async def api_pool_status():
+    """Get pool seeding status."""
+    stats = get_pool_stats()
+    users = list_users()
+
+    user_pools = {}
+    for user in users:
+        pools = get_user_pools(user["user_id"])
+        if pools:
+            user_pools[user["username"]] = len(pools)
+
+    return {
+        "success": True,
+        "total_pools": stats.get("total_pools", 0),
+        "public_pools": stats.get("public_pools", 0),
+        "by_type": stats.get("by_type", {}),
+        "users_with_pools": user_pools,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# =============================================================================
 # MAIN
 # =============================================================================
 
