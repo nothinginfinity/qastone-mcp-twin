@@ -270,24 +270,28 @@ def handle_check_inbox(params: dict) -> dict:
     if not token:
         return {"success": False, "error": "Token required"}
 
-    user_id = authenticate(token)
-    if not user_id:
-        return {"success": False, "error": "Invalid token"}
+    try:
+        user_id = authenticate(token)
+        if not user_id:
+            return {"success": False, "error": "Invalid token"}
 
-    transfers = check_inbox(user_id)
-    items = []
-    for t in transfers:
-        stone = t.get("stone", {})
-        offer = stone.get("offer", {})
-        items.append({
-            "transfer_id": t.get("transfer_id"),
-            "from": t.get("from_user"),
-            "stone_id": t.get("stone_id"),
-            "sponsor": offer.get("sponsor", {}).get("name", "Unknown"),
-            "value": f"${offer.get('value_cents', 0) / 100:.2f}",
-        })
+        transfers = check_inbox(user_id)
+        items = []
+        for t in transfers:
+            stone = t.get("stone", {})
+            offer = stone.get("offer", {})
+            items.append({
+                "transfer_id": t.get("transfer_id"),
+                "from": t.get("from_user"),
+                "stone_id": t.get("stone_id"),
+                "sponsor": offer.get("sponsor", {}).get("name", "Unknown"),
+                "value": f"${offer.get('value_cents', 0) / 100:.2f}",
+            })
 
-    return {"success": True, "pending_count": len(items), "transfers": items}
+        return {"success": True, "pending_count": len(items), "transfers": items}
+    except Exception as e:
+        print(f"[Inbox] Error: {e}")
+        return {"success": False, "error": str(e), "transfers": []}
 
 
 def handle_accept_transfer(params: dict) -> dict:
@@ -2333,8 +2337,8 @@ async def send_to_inbox(wallet_hash: str, data: InboxMessage):
 
 
 @app.get("/api/v1/inbox/{wallet_hash}")
-async def check_inbox(wallet_hash: str):
-    """Check inbox for a wallet."""
+async def check_wallet_inbox(wallet_hash: str):
+    """Check inbox for a wallet (v1 API)."""
     try:
         from redis_accounts import get_redis
         r = get_redis()
