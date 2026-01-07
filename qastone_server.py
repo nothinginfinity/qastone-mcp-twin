@@ -79,6 +79,30 @@ from redis_datapools import (
     POOL_TYPE_ICONS,
     PRICING_ICONS,
 )
+# V2 Data Pools with enhanced features
+from redis_datapools_v2 import (
+    create_pool_v2,
+    get_pool_v2,
+    update_pool_v2,
+    get_user_pools_v2,
+    list_public_pools_v2,
+    create_invite_link,
+    get_invite_link,
+    use_invite_link,
+    get_pool_invite_links,
+    revoke_invite_link,
+    create_bridge_v2,
+    request_bridge,
+    respond_to_bridge_request,
+    revoke_bridge,
+    get_user_incoming_bridges,
+    get_user_outgoing_bridges,
+    get_pending_bridge_requests,
+    get_pool_stats_v2,
+    get_all_categories,
+    PoolCategory,
+    CATEGORY_INFO,
+)
 from qastone_mcp_updates import (
     transfer_as_mcp_update,
     get_chain_status,
@@ -3888,32 +3912,367 @@ async def api_discover_activity(limit: int = 20):
 
 
 # =============================================================================
+# DATA POOLS V2 API - Enhanced with Categories, Privacy, Invite Links
+# =============================================================================
+
+@app.get("/api/v2/pools/categories")
+async def api_v2_categories():
+    """Get all pool categories"""
+    categories = get_all_categories()
+    return {
+        "success": True,
+        "categories": categories,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/v2/pools/create")
+async def api_v2_create_pool(
+    user_token: str,
+    name: str,
+    category: str,
+    description: str = "",
+    tags: str = "",
+    visibility: str = "private",
+    sharing_mode: str = "off",
+    access_level: str = "view",
+):
+    """Create a V2 pool with full privacy controls"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    privacy = {
+        "visibility": visibility,
+        "sharing_mode": sharing_mode,
+        "access_level": access_level,
+        "require_approval": sharing_mode == "request",
+    }
+
+    metadata = {
+        "description": description,
+        "tags": [t.strip() for t in tags.split(",") if t.strip()],
+        "size_bytes": 0,
+        "item_count": 0,
+    }
+
+    result = create_pool_v2(
+        owner_id=user_id,
+        name=name,
+        category=category,
+        privacy=privacy,
+        metadata=metadata,
+    )
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/v2/pools/browse")
+async def api_v2_browse_pools(
+    category: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Browse public V2 pools"""
+    pools = list_public_pools_v2(category=category, limit=limit, offset=offset)
+
+    return {
+        "success": True,
+        "pools": pools,
+        "count": len(pools),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/v2/pools/my-pools")
+async def api_v2_my_pools(user_token: str):
+    """Get user's V2 pools"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token", "pools": []}
+
+    pools = get_user_pools_v2(user_id)
+    return {
+        "success": True,
+        "pools": pools,
+        "count": len(pools),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/v2/pools/{pool_id}")
+async def api_v2_get_pool(pool_id: str, user_token: Optional[str] = None):
+    """Get V2 pool details"""
+    pool = get_pool_v2(pool_id)
+    if not pool:
+        return {"success": False, "error": "Pool not found"}
+
+    pool_dict = pool.to_dict()
+    pool_dict["category_info"] = pool.category_info
+
+    return {
+        "success": True,
+        "pool": pool_dict,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+# --- Invite Links ---
+
+@app.post("/api/v2/pools/{pool_id}/invite-link")
+async def api_v2_create_invite_link(
+    pool_id: str,
+    user_token: str,
+    access_level: str = "view",
+    expires_in_hours: Optional[int] = None,
+    max_uses: int = 0,
+    message: str = "",
+):
+    """Create a shareable invite link for a pool"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = create_invite_link(
+        pool_id=pool_id,
+        owner_id=user_id,
+        access_level=access_level,
+        expires_in_hours=expires_in_hours,
+        max_uses=max_uses,
+        message=message,
+    )
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/v2/pools/{pool_id}/invite-links")
+async def api_v2_get_invite_links(pool_id: str, user_token: str):
+    """Get all invite links for a pool"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    pool = get_pool_v2(pool_id)
+    if not pool or pool.owner_id != user_id:
+        return {"success": False, "error": "Not authorized"}
+
+    links = get_pool_invite_links(pool_id)
+    return {
+        "success": True,
+        "links": links,
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/v2/invite/{link_code}/use")
+async def api_v2_use_invite_link(link_code: str, user_token: str):
+    """Use an invite link to create a bridge"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = use_invite_link(link_code, user_id)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/v2/invite/{link_code}")
+async def api_v2_get_invite_link(link_code: str):
+    """Get invite link details (for preview before using)"""
+    link = get_invite_link(link_code)
+    if not link:
+        return {"success": False, "error": "Invalid or expired invite link"}
+
+    pool = get_pool_v2(link.pool_id)
+    owner_name = link.owner_id.replace("user_", "")
+
+    return {
+        "success": True,
+        "invite": {
+            "short_code": link.short_code,
+            "pool_name": pool.name if pool else "Unknown",
+            "pool_category": pool.category if pool else "unknown",
+            "category_info": pool.category_info if pool else {},
+            "owner": owner_name,
+            "message": link.message,
+            "access_level": link.access_level,
+            "expires_at": link.expires_at,
+        },
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.delete("/api/v2/pools/{pool_id}/invite-link/{link_id}")
+async def api_v2_revoke_invite_link(pool_id: str, link_id: str, user_token: str):
+    """Revoke an invite link"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = revoke_invite_link(link_id, user_id)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+# --- Bridge Requests ---
+
+@app.post("/api/v2/pools/{pool_id}/request-bridge")
+async def api_v2_request_bridge(
+    pool_id: str,
+    user_token: str,
+    message: str = "",
+    offer_pool_id: Optional[str] = None,
+):
+    """Request access to a pool (creates pending bridge)"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = request_bridge(
+        pool_id=pool_id,
+        requester_id=user_id,
+        message=message,
+        offer_pool_id=offer_pool_id,
+    )
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/v2/bridges/pending")
+async def api_v2_pending_bridges(user_token: str):
+    """Get pending bridge requests (for pool owners to review)"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    requests = get_pending_bridge_requests(user_id)
+    return {
+        "success": True,
+        "requests": requests,
+        "count": len(requests),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.post("/api/v2/bridges/{bridge_id}/respond")
+async def api_v2_respond_to_bridge(
+    bridge_id: str,
+    user_token: str,
+    accept: bool,
+    decline_reason: str = "",
+):
+    """Accept or decline a bridge request"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = respond_to_bridge_request(
+        bridge_id=bridge_id,
+        owner_id=user_id,
+        accept=accept,
+        decline_reason=decline_reason,
+    )
+
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/v2/bridges/incoming")
+async def api_v2_incoming_bridges(user_token: str):
+    """Get bridges where user has access to others' pools"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    bridges = get_user_incoming_bridges(user_id)
+    return {
+        "success": True,
+        "bridges": bridges,
+        "count": len(bridges),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.get("/api/v2/bridges/outgoing")
+async def api_v2_outgoing_bridges(user_token: str):
+    """Get bridges where user owns the pool (sharing out)"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    bridges = get_user_outgoing_bridges(user_id)
+    return {
+        "success": True,
+        "bridges": bridges,
+        "count": len(bridges),
+        "server_instance": SERVER_INSTANCE
+    }
+
+
+@app.delete("/api/v2/bridges/{bridge_id}")
+async def api_v2_revoke_bridge(bridge_id: str, user_token: str):
+    """Revoke an active bridge"""
+    user_id = authenticate(user_token)
+    if not user_id:
+        return {"success": False, "error": "Invalid token"}
+
+    result = revoke_bridge(bridge_id, user_id)
+    result["server_instance"] = SERVER_INSTANCE
+    return result
+
+
+@app.get("/api/v2/pools/stats")
+async def api_v2_pool_stats():
+    """Get V2 pool statistics"""
+    stats = get_pool_stats_v2()
+    stats["server_instance"] = SERVER_INSTANCE
+    return stats
+
+
+# =============================================================================
 # ADMIN: SEED DEMO DATA
 # =============================================================================
 
 @app.post("/api/admin/seed-pools")
-async def api_seed_demo_pools(admin_key: str = ""):
+async def api_seed_demo_pools(admin_key: str = "", version: str = "v2"):
     """
     Seed demo accounts with data pools.
     Requires admin_key for security.
+    version: v1 (legacy) or v2 (enhanced)
     """
-    # Simple security - require key
     if admin_key != "seed_prax_2026":
         return {"success": False, "error": "Invalid admin key"}
 
     try:
-        from seed_datapools import seed_demo_pools
-        results = seed_demo_pools(verbose=False)
-        return {
-            "success": True,
-            "users_seeded": results.get("users_seeded", 0),
-            "pools_created": results.get("pools_created", 0),
-            "bridges_created": results.get("bridges_created", 0),
-            "errors": results.get("errors", [])[:5],
-            "server_instance": SERVER_INSTANCE
-        }
+        if version == "v2":
+            from seed_datapools_v2 import seed_demo_accounts_v2
+            results = seed_demo_accounts_v2(verbose=False)
+            return {
+                "success": True,
+                "version": "v2",
+                "users_seeded": results.get("users_seeded", 0),
+                "pools_created": results.get("pools_created", 0),
+                "bridges_created": 0,  # V2 doesn't auto-create bridges!
+                "note": "No bridges created - users connect via invite links",
+                "server_instance": SERVER_INSTANCE
+            }
+        else:
+            from seed_datapools import seed_demo_pools
+            results = seed_demo_pools(verbose=False)
+            return {
+                "success": True,
+                "version": "v1",
+                "users_seeded": results.get("users_seeded", 0),
+                "pools_created": results.get("pools_created", 0),
+                "bridges_created": results.get("bridges_created", 0),
+                "server_instance": SERVER_INSTANCE
+            }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        import traceback
+        return {"success": False, "error": str(e), "trace": traceback.format_exc()}
 
 
 @app.get("/api/admin/pool-status")
