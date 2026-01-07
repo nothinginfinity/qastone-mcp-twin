@@ -321,7 +321,13 @@ def check_inbox(user_id: str) -> List[Dict]:
     """Get all pending transfers in user's inbox."""
     r = get_redis()
     inbox_data = r.lrange(f"inbox:{user_id}", 0, -1)
-    return [json.loads(data) for data in inbox_data]
+    result = []
+    for data in inbox_data:
+        # Handle bytes from Redis
+        if isinstance(data, bytes):
+            data = data.decode('utf-8')
+        result.append(json.loads(data))
+    return result
 
 
 def accept_transfer(user_id: str, transfer_id: str) -> Dict:
@@ -333,6 +339,9 @@ def accept_transfer(user_id: str, transfer_id: str) -> Dict:
     transfer_index = -1
 
     for i, data in enumerate(inbox_data):
+        # Handle bytes from Redis
+        if isinstance(data, bytes):
+            data = data.decode('utf-8')
         t = json.loads(data)
         if t.get("transfer_id") == transfer_id:
             transfer = t
