@@ -128,17 +128,28 @@ def create_account(username: str, custom_token: Optional[str] = None) -> Dict:
 
 def get_account(user_id: str) -> Optional[Account]:
     """Get account by user_id."""
+    # Handle bytes user_id
+    if isinstance(user_id, bytes):
+        user_id = user_id.decode('utf-8')
+
     r = get_redis()
     data = r.get(f"account:{user_id}")
     if not data:
         return None
+    # Handle bytes from Redis
+    if isinstance(data, bytes):
+        data = data.decode('utf-8')
     return Account.from_dict(json.loads(data))
 
 
 def authenticate(token: str) -> Optional[str]:
     """Authenticate by token. Returns user_id if valid."""
     r = get_redis()
-    return r.get(f"token:{token}")
+    result = r.get(f"token:{token}")
+    # Handle bytes from Redis
+    if isinstance(result, bytes):
+        return result.decode('utf-8')
+    return result
 
 
 def list_users() -> List[Dict]:
@@ -148,6 +159,10 @@ def list_users() -> List[Dict]:
 
     users = []
     for user_id in user_ids:
+        # Handle bytes from Redis smembers
+        if isinstance(user_id, bytes):
+            user_id = user_id.decode('utf-8')
+
         account = get_account(user_id)
         if account:
             wallet_size = r.scard(f"wallet:{user_id}")
